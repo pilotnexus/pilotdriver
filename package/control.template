@@ -1,0 +1,7 @@
+Package: [PACKAGENAME]
+Version: 1.0
+Essential: no
+Architecture: all
+Maintainer: Martin Kramer <martin.kramer@amescon.com>
+Provides: [PACKAGENAME]
+Description: RasPiComm+ Driver, use /proc/rpc+/ filesystem to configure it

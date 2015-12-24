@@ -1,0 +1,16 @@
+#!/bin/sh
+
+# unload the modules
+rmmod rpc+rtc
+rmmod rpc+tty
+rmmod rpc+io
+rmmod rpc+
+
+# update list of modules for modprobe
+depmod
+
+# remove the kernel modules from load at startup
+sed "/rpc+rtc/d" /etc/modules -i
+sed "/rpc+tty/d" /etc/modules -i
+sed "/rpc+io/d"  /etc/modules -i
+sed "/rpc+/d"    /etc/modules -i

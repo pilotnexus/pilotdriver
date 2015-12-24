@@ -1,0 +1,10 @@
+[dD]ebug/
+*.vcxproj.filters
+*.vcxproj.user
+*.ncrunchsolution
+*.ncrunchsolution.user
+*.suo
+*.opensdf
+*.sdf
+/tty-config/tty-config
+tty-send/tty-send

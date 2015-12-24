@@ -1,0 +1,16 @@
+#!/bin/sh
+
+# update the list of modules for modprobe
+depmod
+
+# load the modules
+modprobe rpc+
+modprobe rpc+io
+modprobe rpc+tty
+modprobe rpc+rtc
+
+# add the modules to /etc/modules so that they gets loaded on system startup
+echo "rpc+"    >> /etc/modules
+echo "rpc+tty" >> /etc/modules
+echo "rpc+io"  >> /etc/modules
+echo "rpc+rtc" >> /etc/modules
