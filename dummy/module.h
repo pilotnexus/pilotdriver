@@ -2,4 +2,4 @@
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("mdk");
-MODULE_DESCRIPTION("RasPiComm Plus dummy extension kernel module");
+MODULE_DESCRIPTION("Pilot dummy kernel module");

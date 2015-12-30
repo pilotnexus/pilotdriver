@@ -12,7 +12,7 @@
 
 MODULE_LICENSE    ("GPL");
 MODULE_AUTHOR     ("mdk");
-MODULE_DESCRIPTION("RasPiComm Plus kernel module base driver");
+MODULE_DESCRIPTION("Pilot kernel module base driver");
 
 /* exports the listed symbol into kernel space, so that other modules can call them */
 EXPORT_SYMBOL(pilot_register_driver);

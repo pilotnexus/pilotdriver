@@ -2,4 +2,4 @@
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("mdk");
-MODULE_DESCRIPTION("RasPiComm Plus tty extension kernel module");
+MODULE_DESCRIPTION("Pilot tty kernel module");

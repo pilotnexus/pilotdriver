@@ -17,11 +17,12 @@
 #define __COMMON_H__
 
 #include "common_base.h"
+#include "debug.h"
+
 
 #define SUCCESS 0
 
-/* undefine/comment the following line to strip the debug messages */
-#define DEBUG
+/* define DEBUG in debug.h to include debug messages */
 
 /* use LOG_DEBUG() to trace messages in DEBUG mode */
 #undef LOG_DEBUG

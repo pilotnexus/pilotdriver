@@ -18,6 +18,7 @@
   <ItemGroup>
     <ClInclude Include="commands.h" />
     <ClInclude Include="common_base.h" />
+    <ClInclude Include="debug.h" />
     <ClInclude Include="platform.h" />
     <ClInclude Include="queue.h" />
     <ClInclude Include="pilotstm.h" />

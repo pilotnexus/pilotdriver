@@ -1,29 +1,40 @@
-obj-m += pilotdummy.o
-pilotdummy-objs := module.o
+obj-m += pilot_dummy.o
+pilot_dummy-objs := module.o
 
-SRC = /home/mdk/Documents/pilot/dummy
-LINUX_3_2_27 = /home/mdk/rpi/linux-rpi-3.2.27/
-LINUX_3_6_11 = /home/mdk/rpi/linux-rpi-3.6.y/
-LINUX_3_6_11_538 = /home/mdk/rpi/linux-rpi-3.6.y-538/
-LINUX_3_18_5_225 = /home/mdk/rpi/linux-rpi-3.18.5+225/
+SRC = /home/mdk/pilot/dummy
+BASE_DRV_SRC = /home/mdk/pilot/driver
 
 PREFIX = /home/mdk/rpi/tools-master/arm-bcm2708/arm-bcm2708-linux-gnueabi/bin/arm-bcm2708-linux-gnueabi-
+KERNEL_HEADER_ROOT := /home/mdk/rpi
+KERNEL_DIR_LIST := $(shell ls -1vd $(KERNEL_HEADER_ROOT)/* | grep linux-rpi)
+KERNEL_VER_LIST := $(shell ls -1vd $(KERNEL_HEADER_ROOT)/* | grep linux-rpi | awk '{ sub(/.*linux-rpi-/,""); print }')
 
-all:
-	make ARCH=arm CROSS_COMPILE=$(PREFIX) -C $(LINUX_3_2_27) M=$(SRC) modules
+help:
+	@echo ""
+	@for x in $(KERNEL_VER_LIST); do printf '  make mod_%s  %.*s  build kernel module %s\n' $$x $$(expr 32 - $$( echo $$x | wc -c ) ) "................................." $$x; done
+	@echo ""
+	
+# -------------------------------------------------------------------------------------------
 
-3.2.27+:
-	make ARCH=arm CROSS_COMPILE=$(PREFIX) -C $(LINUX_3_2_27) M=$(SRC) modules
+mod: $(addprefix mod_,$(KERNEL_VER_LIST))
 
-3.6.11+:
-	make ARCH=arm CROSS_COMPILE=$(PREFIX) -C $(LINUX_3_6_11) M=$(SRC) modules
+define mod_template
+mod_$(1):
+ifeq ($(DEBUG), 1)
+	@echo "BUILDING DEBUG VERSION"
+	@echo "#define DEBUG" > $(SRC)/../driver/debug.h
+else
+	@echo "/* #define DEBUG */" > $(SRC)/../driver/debug.h
+endif
+	make -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(BASE_DRV_SRC) clean
+	make ARCH=arm CROSS_COMPILE=$(PREFIX) -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(BASE_DRV_SRC) modules
 
-3.6.11+538:
-	make ARCH=arm CROSS_COMPILE=$(PREFIX) -C $(LINUX_3_6_11_538) M=$(SRC) modules
+	make -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(SRC) clean
+	cp $(BASE_DRV_SRC)/Module.symvers $(SRC)
+	make ARCH=arm CROSS_COMPILE=$(PREFIX) -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(SRC) modules
+	
+endef
 
-3.18.5+225:
-	make ARCH=arm CROSS_COMPILE=$(PREFIX) -C $(LINUX_3_18_5_225) M=$(SRC) modules
+$(foreach mod,$(KERNEL_VER_LIST),$(eval $(call mod_template,$(mod))))
 
-clean:
-	make -C $(LINUX_3_2_27) M=$(SRC) clean
-	make -C $(LINUX_3_6_11) M=$(SRC) clean
+# -------------------------------------------------------------------------------------------

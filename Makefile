@@ -1,8 +1,5 @@
-obj-m += pilot.o
-pilot-objs := module.o queue.o commands.o
-
-SRC = /home/mdk/pilot/driver
-
+BASE_DIR = /home/mdk/pilot
+DRIVER_LIST = driver io plc rtc slcd tty
 PREFIX = /home/mdk/rpi/tools-master/arm-bcm2708/arm-bcm2708-linux-gnueabi/bin/arm-bcm2708-linux-gnueabi-
 KERNEL_HEADER_ROOT := /home/mdk/rpi
 KERNEL_DIR_LIST := $(shell ls -1vd $(KERNEL_HEADER_ROOT)/* | grep linux-rpi)
@@ -14,24 +11,21 @@ help:
 	@echo ""
 	
 # -------------------------------------------------------------------------------------------
-
 mod: $(addprefix mod_,$(KERNEL_VER_LIST))
 
 define mod_template
 mod_$(1):
-ifeq ($(DEBUG), 1)
-	@echo "BUILDING DEBUG VERSION"
-	@echo "#define DEBUG" > $(SRC)/debug.h
-else
-	@echo "/* #define DEBUG */" > $(SRC)/debug.h
-endif
-	
-	make -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(SRC) clean
-	make ARCH=arm CROSS_COMPILE=$(PREFIX) -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(SRC) modules
-	
+	- mkdir $(BASE_DIR)/bin
+	- rm -R $(BASE_DIR)/bin/$(1)
+	mkdir $(BASE_DIR)/bin/$(1)
+	- $(foreach DRV,$(DRIVER_LIST),make -C $(BASE_DIR)/$(DRV) mod_$(1) && cp $(BASE_DIR)/$(DRV)/*.ko $(BASE_DIR)/bin/$(1);)
+	if [ `ls -1 $(BASE_DIR)/bin/$(1) | wc -l` -ne $(words $(DRIVER_LIST)) ]; then rm -R $(BASE_DIR)/bin/$(1); fi
 endef
 
 $(foreach mod,$(KERNEL_VER_LIST),$(eval $(call mod_template,$(mod))))
 
 # -------------------------------------------------------------------------------------------
 
+all:
+	$(foreach VER,$(KERNEL_VER_LIST), make mod_$(VER);)
+	
