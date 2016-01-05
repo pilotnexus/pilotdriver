@@ -1,7 +1,7 @@
 # use the first parameter as the version of the package
 if [ -z $1 ] ; then
-  echo No Version specified as an argument, using version 3.6.11+  
-  VERSION="3.6.11+"
+  echo No Version specified as an argument, exiting  
+  exit 1
 else
   VERSION=$1
 fi

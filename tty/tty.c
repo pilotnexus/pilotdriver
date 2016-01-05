@@ -112,7 +112,7 @@ int pilot_tty_register_driver()
 
   driver->owner = THIS_MODULE;
   driver->driver_name = "pilottty";
-  driver->name = "ttypilot";
+  driver->name = "ttyP";
   driver->major = 0;
   driver->flags = TTY_DRIVER_REAL_RAW | TTY_DRIVER_DYNAMIC_DEV; /* we register our devices ourself */
   //pDriver->num = 0;

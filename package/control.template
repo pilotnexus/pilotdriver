@@ -2,6 +2,6 @@ Package: [PACKAGENAME]
 Version: 1.0
 Essential: no
 Architecture: all
-Maintainer: Martin Kramer <martin.kramer@amescon.com>
+Maintainer: Daniel Amesberger <daniel.amesberger@amescon.com>
 Provides: [PACKAGENAME]
-Description: RasPiComm+ Driver, use /proc/rpc+/ filesystem to configure it
+Description: Pilot Driver, use /proc/pilot/ filesystem to configure it
