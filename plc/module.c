@@ -7,6 +7,8 @@
 #include "common.h"
 #include <linux/string.h>     /* for memset() */
 
+MODULE_LICENSE("GPL");
+
 // *******************************************************************
 // START forward declaration
 static int  __init pilot_plc_init(void); /* kernel module entry function */

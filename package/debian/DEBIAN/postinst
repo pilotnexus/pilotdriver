@@ -4,13 +4,17 @@
 depmod
 
 # load the modules
-modprobe rpc+
-modprobe rpc+io
-modprobe rpc+tty
-modprobe rpc+rtc
+modprobe pilot
+modprobe pilot_io
+modprobe pilot_tty
+modprobe pilot_rtc
+modprobe pilot_slcd
+modprobe pilot_plc
 
 # add the modules to /etc/modules so that they gets loaded on system startup
-echo "rpc+"    >> /etc/modules
-echo "rpc+tty" >> /etc/modules
-echo "rpc+io"  >> /etc/modules
-echo "rpc+rtc" >> /etc/modules
+echo "pilot"     >> /etc/modules
+echo "pilot_tty"  >> /etc/modules
+echo "pilot_io"   >> /etc/modules
+echo "pilot_rtc"  >> /etc/modules
+echo "pilot_slcd" >> /etc/modules
+echo "pilot_plc"  >> /etc/modules

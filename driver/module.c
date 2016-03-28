@@ -18,6 +18,7 @@
 #include <linux/kernel.h>    // needed for KERN_INFO
 #include <linux/interrupt.h> // needed for request_interrupt()
 #include <linux/gpio.h>      // needed for gpio_XXX() functions
+#include <linux/smp.h>		 // needed for get_cpu()
 #include <asm/io.h>          // needed for ioremap & iounmap
 #include <asm/delay.h>       // needed for udelay()
 
@@ -393,7 +394,16 @@ static irqreturn_t rpc_irq_data_m2r_handler(int irq, void* dev_id)
 {
   //if (GPIO_GET(DATA_M2R))
   //{
-    schedule_work( &_internals_irq_data_m2r_work );
+    LOG_DEBUG("schedule_work() for rpc_irq_data_m2r_handler()...");
+
+    bool success = schedule_work_on(get_cpu(), &_internals_irq_data_m2r_work );
+	
+	#ifdef DEBUG
+	if (success)
+	  LOG_DEBUG("schedule_work() for rpc_irq_data_m2r_handler() successful");
+	else
+	  LOG_DEBUG("schedule_work() for rpc_irq_data_m2r_handler() NOT successful");
+	#endif
   //}
 
   return IRQ_HANDLED;
@@ -402,6 +412,8 @@ static irqreturn_t rpc_irq_data_m2r_handler(int irq, void* dev_id)
 /* description: work queue handler is scheduled by the bottom half of the DATA_M2R interrupt */
 static void rpc_irq_data_m2r_work_queue_handler(struct work_struct* args)
 {
+  LOG_DEBUG("rpc_irq_data_m2r_work_queue_handler() called");
+
   /* start the spi transmission */
   rpc_spi0_transmit(_internals.Spi0);
 }
@@ -457,6 +469,7 @@ static void rpc_spi0_transmit(volatile unsigned int* spi0)
   int max_data_per_irq = 1000, data_count = 0; /* guard against stuck DATA_M2R high pin! */
 
   //spin_lock( &QueueLock );
+  LOG_DEBUG("rpc_spi0_transmit() called");
 
   while (1)
   {
@@ -478,6 +491,7 @@ static void rpc_spi0_transmit(volatile unsigned int* spi0)
 
   }
 
+  LOG_DEBUG("rpc_spi0_transmit() done");
   //spin_unlock(&QueueLock);
 }
 
@@ -1805,7 +1819,11 @@ int pilot_try_send(target_t target, const char* data, int count)
   //spin_unlock( &QueueLock );
 
   /* start the spi transmission */
-  while(!schedule_work( &_internals_irq_data_m2r_work ));
+  LOG_DEBUG("schedule_work() for _internals_irq_data_m2r_work()...");
+
+  while(!schedule_work_on(get_cpu(), &_internals_irq_data_m2r_work ));
+
+  LOG_DEBUG("work scheduled successfully");
 
   return ret;
 }

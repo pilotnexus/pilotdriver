@@ -7,6 +7,8 @@
 #include "tty.h"
 #include "common.h"
 
+MODULE_LICENSE("GPL");
+
 // *******************************************************************
 // START forward declaration
 static int  __init pilot_tty_init(void); /* kernel module entry function */

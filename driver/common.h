@@ -19,7 +19,6 @@
 #include "common_base.h"
 #include "debug.h"
 
-
 #define SUCCESS 0
 
 /* define DEBUG in debug.h to include debug messages */

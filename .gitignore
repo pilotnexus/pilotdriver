@@ -10,3 +10,13 @@
 tty-send/tty-send
 driver.VC.opendb
 _NCrunch_driver/
+*.o
+*.cmd
+*.symvers
+*.order
+*.ko
+*.mod
+*.mod.c
+*.save
+*.deb
+package/debian/DEBIAN/control

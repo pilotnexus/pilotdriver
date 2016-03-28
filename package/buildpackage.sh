@@ -1,7 +1,7 @@
 # use the first parameter as the version of the package
 if [ -z $1 ] ; then
-  echo No Version specified as an argument, exiting  
-  exit 1
+  echo No Version specified as an argument, using version 3.6.11+  
+  VERSION="3.6.11+"
 else
   VERSION=$1
 fi
@@ -14,10 +14,10 @@ else
 fi
 
 # execute make for the main driver module
-make -C ../driver ${NAME} # build the main driver module (rpc+.ko)
-make -C ../tty ${NAME}    # build the tty driver module (rpc+tty.ko)
-make -C ../io ${NAME}     # build the io driver module (rpc+io.ko)
-make -C ../rtc ${NAME}    # build the rtc driver module (rpc+rtc.ko)
+make -C ../driver ${NAME} # build the main driver module (pilot.ko)
+make -C ../tty ${NAME}    # build the tty driver module (pilottty.ko)
+make -C ../io ${NAME}     # build the io driver module (pilotio.ko)
+make -C ../rtc ${NAME}    # build the rtc driver module (pilotrtc.ko)
 
 MODULESDIR="./debian/lib/modules"
 KODIR="${MODULESDIR}/${VERSION}"
@@ -31,13 +31,13 @@ if [ ! -d $KODIR ] ; then
 fi
 
 # copy the kernel module binaries to the destination folder
-cp ../driver/rpc+.ko ${KODIR}/rpc+.ko
-cp ../tty/rpc+tty.ko ${KODIR}/rpc+tty.ko
-cp ../io/rpc+io.ko ${KODIR}/rpc+io.ko
-cp ../rtc/rpc+rtc.ko ${KODIR}/rpc+rtc.ko
+cp ../driver/pilot.ko ${KODIR}/pilot.ko
+cp ../tty/pilottty.ko ${KODIR}/pilottty.ko
+cp ../io/pilotio.ko ${KODIR}/pilotio.ko
+cp ../rtc/pilotrtc.ko ${KODIR}/pilotrtc.ko
 
 # create the package name
-PACKAGENAME="rpc+${NAME}"
+PACKAGENAME="pilot${NAME}"
 
 # create the package configuration file based upon the template debian/DEBIAN/control
 sed "s/\[PACKAGENAME\]/${PACKAGENAME}/" control.template > debian/DEBIAN/control

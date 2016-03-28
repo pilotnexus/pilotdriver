@@ -1,5 +1,5 @@
 #include <linux/module.h>
 
 MODULE_LICENSE("GPL");
-MODULE_AUTHOR("mdk");
-MODULE_DESCRIPTION("Pilot LCD kernel module");
+MODULE_AUTHOR("mdk/Daniel Amesberger");
+MODULE_DESCRIPTION("PiloT Memory-LCD kernel module");

@@ -11,6 +11,8 @@
 #include "io_commands.h"
 #include "irq.h"              /* support for generating irq for input changes */
 
+MODULE_LICENSE("GPL");
+
 // *******************************************************************
 // START forward declaration
 static int  __init pilot_io_init(void); /* kernel module entry function */
@@ -864,7 +866,7 @@ static pilot_cmd_handler_status_t pilot_io_callback_cmd_received(pilot_cmd_t cmd
 
 
 #define pilot_io_proc_gpio_base_name "io_gpio_base"
-#define pilot_io_proc_gpio_max_name "io_gpio_max"
+#define pilot_io_proc_gpio_max_name "io_gpio_max"
 
 static void pilot_io_proc_init()
 {

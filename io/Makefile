@@ -27,9 +27,6 @@ ifeq ($(DEBUG), 1)
 else
 	@echo "/* #define DEBUG */" > $(SRC)/../driver/debug.h
 endif
-	make -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(BASE_DRV_SRC) clean
-	make ARCH=arm CROSS_COMPILE=$(PREFIX) -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(BASE_DRV_SRC) modules
-
 	make -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(SRC) clean
 	cp $(BASE_DRV_SRC)/Module.symvers $(SRC)
 	make ARCH=arm CROSS_COMPILE=$(PREFIX) -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(SRC) modules

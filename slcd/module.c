@@ -8,6 +8,8 @@
 #include "common.h"
 #include "bmp.h"
 
+MODULE_LICENSE("GPL");
+
 #define DISPLAY_MAX_WIDTH  400
 #define DISPLAY_MAX_HEIGHT 240
 #define DISPLAY_BUFFERSIZE ((DISPLAY_MAX_WIDTH * DISPLAY_MAX_HEIGHT) / 8)

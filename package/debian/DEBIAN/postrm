@@ -1,16 +1,20 @@
 #!/bin/sh
 
 # unload the modules
-rmmod rpc+rtc
-rmmod rpc+tty
-rmmod rpc+io
-rmmod rpc+
+rmmod pilot_plc
+rmmod pilot_slcd
+rmmod pilot_rtc
+rmmod pilot_tty
+rmmod pilot_io
+rmmod pilot
 
 # update list of modules for modprobe
 depmod
 
 # remove the kernel modules from load at startup
-sed "/rpc+rtc/d" /etc/modules -i
-sed "/rpc+tty/d" /etc/modules -i
-sed "/rpc+io/d"  /etc/modules -i
-sed "/rpc+/d"    /etc/modules -i
+sed "/pilot_plc/d"  /etc/modules -i
+sed "/pilot_slcd/d" /etc/modules -i
+sed "/pilot_rtc/d"  /etc/modules -i
+sed "/pilot_tty/d"  /etc/modules -i
+sed "/pilot_io/d"   /etc/modules -i
+sed "/rpc+/d"     /etc/modules -i
