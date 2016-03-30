@@ -56,7 +56,8 @@ static void                   rpc_spi0_handle_received_data(spidata_t miso);
 static int         rpc_irq_data_m2r_init (int gpio);
 static void        rpc_irq_data_m2r_deinit(int irq);
 static irqreturn_t rpc_irq_data_m2r_handler(int irq, void* dev_id);
-static void        rpc_irq_data_m2r_work_queue_handler(struct work_struct *work);
+//static void        rpc_irq_data_m2r_work_queue_handler(struct work_struct *work); /* workqueue definition */
+static void        rpc_irq_data_m2r_work_queue_handler(unsigned long data); /* tasklet definition */
 
 static void rpc_proc_init(void);
 static void rpc_proc_deinit(void);
@@ -78,8 +79,13 @@ static gpio_config_t _internals_gpio[] = {
   {DATA_M2R, GPIO_MODE_INPUT}
 };
 
+static struct workqueue_struct *comm_wq;
+
 /* workqueue for bottom half of DATA_M2R irq handler */
-static DECLARE_WORK(_internals_irq_data_m2r_work, rpc_irq_data_m2r_work_queue_handler);
+//static DECLARE_WORK(_internals_irq_data_m2r_work, rpc_irq_data_m2r_work_queue_handler);
+
+/* tasklet */
+DECLARE_TASKLET( _internals_irq_data_m2r_tasklet, rpc_irq_data_m2r_work_queue_handler, (unsigned long) 0 );
 
 /* spinlock to secure the spi data transfer */
 //static spinlock_t QueueLock;
@@ -120,7 +126,16 @@ static int __init rpc_init(void)
 {
   int i, retValue = SUCCESS;
   LOG_DEBUG("rpc_init()");
-
+  
+  //alloc workqueue
+  /*
+  comm_wq = alloc_ordered_workqueue("pilot_wq", 0);
+  LOG_DEBUG("alloc_workqueue() created workqueue at %X", (int)comm_wq);
+  
+  if (comm_wq == NULL)
+    LOG(KERN_ERR, "alloc_workqueue() failed");
+  */
+  
   pilot_internals_init();
 
   /* driver ids are 1 based */
@@ -172,7 +187,14 @@ static int __init rpc_init(void)
 static void __exit rpc_exit(void)
 {
   LOG_DEBUG("rpc_exit() called.");
-
+  
+  // destroy workqueue
+  /*
+  flush_workqueue(comm_wq);
+  destroy_workqueue(comm_wq);
+  LOG_DEBUG("destroy_workqueue() done.");
+  */
+  
   // free the Spi0 memory mapping
   rpc_spi0_deinit_mem(_internals.Spi0);
 
@@ -394,23 +416,23 @@ static irqreturn_t rpc_irq_data_m2r_handler(int irq, void* dev_id)
 {
   //if (GPIO_GET(DATA_M2R))
   //{
-    LOG_DEBUG("schedule_work() for rpc_irq_data_m2r_handler()...");
-
-    bool success = schedule_work_on(get_cpu(), &_internals_irq_data_m2r_work );
+    //LOG_DEBUG("queue_work() for rpc_irq_data_m2r_handler()");
+    //flush_workqueue(comm_wq);
+    //LOG_DEBUG("queue_work() has no pending tasks, start queue_work()");
 	
-	#ifdef DEBUG
-	if (success)
-	  LOG_DEBUG("schedule_work() for rpc_irq_data_m2r_handler() successful");
-	else
-	  LOG_DEBUG("schedule_work() for rpc_irq_data_m2r_handler() NOT successful");
-	#endif
+	//queue_work(comm_wq, &_internals_irq_data_m2r_work );
+    //schedule_work(&_internals_irq_data_m2r_work );
+	tasklet_schedule(&_internals_irq_data_m2r_tasklet);	
+	
+    LOG_DEBUG("queue_work() for rpc_irq_data_m2r_handler() successful");
   //}
 
   return IRQ_HANDLED;
 }
 
 /* description: work queue handler is scheduled by the bottom half of the DATA_M2R interrupt */
-static void rpc_irq_data_m2r_work_queue_handler(struct work_struct* args)
+//static void rpc_irq_data_m2r_work_queue_handler(struct work_struct* args)
+static void rpc_irq_data_m2r_work_queue_handler(unsigned long data)
 {
   LOG_DEBUG("rpc_irq_data_m2r_work_queue_handler() called");
 
@@ -1806,6 +1828,7 @@ void pilot_unregister_driver(int driverId)
 int pilot_try_send(target_t target, const char* data, int count)
 { 
   int ret = 0, i;
+  
   LOG_DEBUG("pilot_send(target=%i, count=%i) called", target, count);
 
   //spin_lock( &QueueLock );
@@ -1819,10 +1842,16 @@ int pilot_try_send(target_t target, const char* data, int count)
   //spin_unlock( &QueueLock );
 
   /* start the spi transmission */
-  LOG_DEBUG("schedule_work() for _internals_irq_data_m2r_work()...");
+  LOG_DEBUG("queue_work() for _internals_irq_data_m2r_work()");
 
-  while(!schedule_work_on(get_cpu(), &_internals_irq_data_m2r_work ));
+  //while(!schedule_work(&_internals_irq_data_m2r_work ));
+  //flush_workqueue(comm_wq);
+  //LOG_DEBUG("queue_work() has no pending tasks, start queue_work()");
 
+  //queue_work(comm_wq, &_internals_irq_data_m2r_work );
+  //schedule_work(&_internals_irq_data_m2r_work );
+  tasklet_schedule(&_internals_irq_data_m2r_tasklet);	
+  
   LOG_DEBUG("work scheduled successfully");
 
   return ret;
