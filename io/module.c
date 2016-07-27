@@ -44,8 +44,8 @@ static void pilot_io_proc_deinit(void);
 static void pilot_io_proc_init_counter_module(module_slot_t slot);
 static void pilot_io_proc_deinit_counter_module(module_slot_t slot);
 
-static void pilot_io_proc_init_ia8_module(module_slot_t slot);
-static void pilot_io_proc_deinit_ia8_module(module_slot_t slot);
+static void pilot_io_proc_init_ai8_module(module_slot_t slot);
+static void pilot_io_proc_deinit_ai8_module(module_slot_t slot);
 
 /////////////////////////////////////////////////////////////
 /* START forward declaration of gpiolib callback functions */
@@ -98,7 +98,7 @@ static pilot_cmd_handler_t pilot_cmd_handler = {
 static const struct file_operations proc_pilot_io_gpio_base_fops,
                                     proc_pilot_io_gpio_max_fops,
                                     proc_pilot_module_counter_fops,
-                                    proc_pilot_module_ia8_fops;
+                                    proc_pilot_module_ai8_fops;
 
 // END local members
 // *******************************************************************
@@ -159,7 +159,7 @@ static const char io16[]     = "io16";
 static const char i8[]       = "i8";
 static const char o8[]       = "o8";
 static const char counter8[] = "counter8";
-static const char ia8[]      = "ia8";
+static const char ai8[]      = "ai8";
 
 /* helper function that retrieves the io_module_type_t */
 static pilot_io_module_type_t pilot_io_get_module_type(const pilot_module_type_t *module_type)
@@ -174,8 +174,8 @@ static pilot_io_module_type_t pilot_io_get_module_type(const pilot_module_type_t
     io_type = pilot_io_module_type_o8;
   else if (strncmp(counter8, module_type->name, 8) == 0)
     io_type = pilot_io_module_type_counter8;
-  else if (strncmp(ia8, module_type->name, 3) == 0)
-    io_type = pilot_io_module_type_ia8;
+  else if (strncmp(ai8, module_type->name, 3) == 0)
+    io_type = pilot_io_module_type_ai8;
   else
     io_type = pilot_io_module_type_invalid;
 
@@ -321,11 +321,11 @@ static int pilot_io_unregister_gpio_module(module_slot_t slot)
   return ret;
 }
 
-static int pilot_io_register_ia8_module(module_slot_t slot)
+static int pilot_io_register_ai8_module(module_slot_t slot)
 {
-  LOG_DEBUG("pilot_io_register_ia8_module(slot=%i)", slot);
+  LOG_DEBUG("pilot_io_register_ai8_module(slot=%i)", slot);
 
-  pilot_io_proc_init_ia8_module(slot);
+  pilot_io_proc_init_ai8_module(slot);
 
   return SUCCESS;
 }
@@ -738,8 +738,8 @@ static int pilot_io_callback_assign_slot(module_slot_t slot, const pilot_module_
       pilot_io_register_counter_module(slot); /* register the counter module */
       break;
 
-    case pilot_io_module_type_ia8:
-      pilot_io_register_ia8_module(slot);
+    case pilot_io_module_type_ai8:
+      pilot_io_register_ai8_module(slot);
       break;
 
     default: LOG(KERN_ERR, "trying to assign unknown module type: %i", io_type);
@@ -757,7 +757,7 @@ static int pilot_io_callback_unassign_slot(module_slot_t slot)
   LOG_DEBUG("pilot_io_callback_unassign_slot(slot=%i) called", slot);
 
   /* remove the input proc entries, if any */
-  pilot_io_proc_deinit_ia8_module(slot);
+  pilot_io_proc_deinit_ai8_module(slot);
 
   /* remove the counter proc entries, if any */
   pilot_io_proc_deinit_counter_module(slot);
@@ -866,7 +866,8 @@ static pilot_cmd_handler_status_t pilot_io_callback_cmd_received(pilot_cmd_t cmd
 
 
 #define pilot_io_proc_gpio_base_name "io_gpio_base"
-#define pilot_io_proc_gpio_max_name "io_gpio_max"
+#define pilot_io_proc_gpio_max_name "io_gpio_max"
+
 
 static void pilot_io_proc_init()
 {
@@ -971,62 +972,62 @@ static int pilot_io_proc_pilot_module_counter_write(struct file *file, const cha
   return ret;
 }
 
-static char* pilot_io_proc_ia8_names[] = { "inputanalog0", "inputanalog1", "inputanalog2", "inputanalog3", "inputanalog4", "inputanalog5", "inputanalog6", "inputanalog7" };
+static char* pilot_io_proc_ai8_names[] = { "analoginput0", "analoginput1", "analoginput2", "analoginput3", "analoginput4", "analoginput5", "analoginput6", "analoginput7" };
 
-static void pilot_io_proc_init_ia8_module(module_slot_t slot)
+static void pilot_io_proc_init_ai8_module(module_slot_t slot)
 {
   int input_index;
-  ia8_module_t* ia8_module;
+  ai8_module_t* ai8_module;
 
   LOG_DEBUG("pilot_io_proc_init_counter_module(slot=%i)", slot);
 
-  ia8_module = &_internals.ia8_modules[(int)slot];
+  ai8_module = &_internals.ai8_modules[(int)slot];
 
   /* register /proc/pilot/module[slot]/inputanalog[0-8] */
   /* register a file foreach input */
   for (input_index = 0; input_index < IO_COUNT; input_index++)
   {
-    ia8_module->proc_ia[input_index] = 
+    ai8_module->proc_ia[input_index] = 
       proc_create_data(
-        pilot_io_proc_ia8_names[input_index],
+        pilot_io_proc_ai8_names[input_index],
         0666,
         _internals.proc_module_dir[(int)slot],
-        &proc_pilot_module_ia8_fops,
+        &proc_pilot_module_ai8_fops,
         (void*)((slot << 3) | input_index) /* encode the slot and input */
       );
 
-    //  create_proc_entry(pilot_io_proc_ia8_names[input_index],    /* name */
+    //  create_proc_entry(pilot_io_proc_ai8_names[input_index],    /* name */
     //                    0666,                                   /* writable file */
     //                    _internals.proc_module_dir[(int)slot]); /* parent dir */
 
-    //entry->read_proc  = pilot_io_proc_ia8_callback_read;   /* file read callback */
+    //entry->read_proc  = pilot_io_proc_ai8_callback_read;   /* file read callback */
     //entry->write_proc = NULL;  /* file write callback */
     //entry->data       = (void*)((slot << 3) | input_index); /* make the calls discernable for the read/write functions by examining the data parameter */
   }
 }
 
-static void pilot_io_proc_deinit_ia8_module(module_slot_t slot)
+static void pilot_io_proc_deinit_ai8_module(module_slot_t slot)
 {
   int input_index;
-  ia8_module_t *ia8_module;
+  ai8_module_t *ai8_module;
   struct proc_dir_entry* entry;
 
-  ia8_module = &_internals.ia8_modules[(int)slot];
+  ai8_module = &_internals.ai8_modules[(int)slot];
 
-  if (ia8_module != NULL)
+  if (ai8_module != NULL)
   {
     for (input_index = 0; input_index < IO_COUNT; input_index++)
     {
-      entry = ia8_module->proc_ia[input_index];
+      entry = ai8_module->proc_ia[input_index];
 
       if (entry != NULL)
       {
         /* remove the counter entry */
-        remove_proc_entry(pilot_io_proc_ia8_names[input_index],
+        remove_proc_entry(pilot_io_proc_ai8_names[input_index],
                           _internals.proc_module_dir[(int)slot]);
 
         /* reset the proc_counter */
-        ia8_module->proc_ia[input_index] = NULL;
+        ai8_module->proc_ia[input_index] = NULL;
       }
     }
   }
@@ -1127,23 +1128,23 @@ static const struct file_operations proc_pilot_module_counter_fops = {
   .write = pilot_io_proc_pilot_module_counter_write
 };
 
-static int pilot_io_proc_pilot_module_ia8_show(struct seq_file *file, void *data)
+static int pilot_io_proc_pilot_module_ai8_show(struct seq_file *file, void *data)
 {
   /* get the module index and counter index from the data */
   int module_index, input_index, ret;
-  ia8_module_t *ia8_module;
+  ai8_module_t *ai8_module;
   gpio_module_t *gpio_module;
 
   module_index = (int)file->private >> 3;
   input_index = (int)file->private & 0x7;
 
-  LOG_DEBUG("pilot_io_proc_pilot_module_ia8_show(module_index=%i, input_index=%i) called", module_index, input_index);
+  LOG_DEBUG("pilot_io_proc_pilot_module_ai8_show(module_index=%i, input_index=%i) called", module_index, input_index);
 
   if (pilot_io_try_get_ia(module_index, input_index, _internals.answer_timeout) == -1) /* try to update the counter before we write it to the user */
     ret = -EFAULT; /* return an error if getting the counter fails */
   else
   {
-    ia8_module = &_internals.ia8_modules[module_index];
+    ai8_module = &_internals.ai8_modules[module_index];
     gpio_module = &_internals.gpio_modules[module_index];
     seq_printf(file, "%llu", gpio_module->gpio_states[input_index]);
     ret = 0;
@@ -1152,14 +1153,14 @@ static int pilot_io_proc_pilot_module_ia8_show(struct seq_file *file, void *data
   return ret;
 }
 
-static int pilot_io_proc_pilot_module_ia8_open(struct inode *inode, struct file *file)
+static int pilot_io_proc_pilot_module_ai8_open(struct inode *inode, struct file *file)
 {
-  LOG_DEBUG("pilot_io_proc_pilot_module_ia8_open() data=%i", (int)PDE_DATA(inode));
-  return single_open(file, pilot_io_proc_pilot_module_ia8_show, PDE_DATA(inode));
+  LOG_DEBUG("pilot_io_proc_pilot_module_ai8_open() data=%i", (int)PDE_DATA(inode));
+  return single_open(file, pilot_io_proc_pilot_module_ai8_show, PDE_DATA(inode));
 }
 
-static const struct file_operations proc_pilot_module_ia8_fops = {
-  .open = pilot_io_proc_pilot_module_ia8_open,
+static const struct file_operations proc_pilot_module_ai8_fops = {
+  .open = pilot_io_proc_pilot_module_ai8_open,
   .llseek = seq_lseek,
   .read = seq_read,
   .release = single_release

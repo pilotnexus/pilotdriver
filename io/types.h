@@ -17,7 +17,7 @@ typedef enum {
   pilot_io_module_type_i8,
   pilot_io_module_type_o8,
   pilot_io_module_type_io16,
-  pilot_io_module_type_ia8,
+  pilot_io_module_type_ai8,
   pilot_io_module_type_counter8
 } pilot_io_module_type_t;
 
@@ -42,14 +42,14 @@ typedef struct {
 
 typedef struct {
   struct proc_dir_entry *proc_ia[IO_COUNT]; /* holds the analog input entries */
-} ia8_module_t;
+} ai8_module_t;
 
 /* struct that groups internal members */
 typedef struct {
   int driverId;  /* as supplied by the main pilot driver pilot_register_driver() call */
   gpio_module_t gpio_modules[MODULES_COUNT];
   counter_module_t counter_modules[MODULES_COUNT];
-  ia8_module_t ia8_modules[MODULES_COUNT];
+  ai8_module_t ai8_modules[MODULES_COUNT];
   struct proc_dir_entry* proc_module_dir[MODULES_COUNT]; /* holds the base module directory entry (/proc/pilot/moduleX) */
   int gpio_base; /* gpio base number, gpio allocation starts from here */
   int gpio_max;  /* gpio max number, gpio allocation stops here */
