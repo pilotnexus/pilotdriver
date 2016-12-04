@@ -158,7 +158,7 @@ static void __exit pilot_io_exit()
 static const char io16[]     = "io16";
 static const char i8[]       = "i8";
 static const char o8[]       = "o8";
-static const char counter8[] = "counter8";
+static const char counter8[] = "count8";
 static const char ai8[]      = "ai8";
 
 /* helper function that retrieves the io_module_type_t */
