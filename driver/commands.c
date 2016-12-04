@@ -15,6 +15,8 @@
 #define pilot_CMD_TYPE_RTC_SET "rtc set"
 #define pilot_CMD_TYPE_INPUT_GET_COUNTER "input get counter"
 #define pilot_CMD_TYPE_INPUT_SET_COUNTER "input set counter"
+#define pilot_CMD_TYPE_LORA_SET_ENABLE "lora set enable"
+#define pilot_CMD_TYPE_LORA_GET_ENABLE "lora get enable"
 #define pilot_CMD_TYPE_GPS_SET_ENABLE "gps set enable"
 #define pilot_CMD_TYPE_GPS_GET_ENABLE "gps get enable"
 #define pilot_CMD_TYPE_IO16_SET_DIRECTION "io16 set direction"
@@ -51,6 +53,8 @@ char* pilot_cmd_type_to_name(pilot_cmd_type_t type)
     case pilot_cmd_type_eeprom_hid_set: return pilot_CMD_TYPE_HID_SET;
     case pilot_cmd_type_eeprom_fid_get: return pilot_CMD_TYPE_FID_GET;
     case pilot_cmd_type_eeprom_fid_set: return pilot_CMD_TYPE_FID_SET;
+    case pilot_cmd_type_lora_get_enable: return pilot_CMD_TYPE_LORA_GET_ENABLE;
+    case pilot_cmd_type_lora_set_enable: return pilot_CMD_TYPE_LORA_SET_ENABLE;
     case pilot_cmd_type_gps_get_enable: return pilot_CMD_TYPE_GPS_GET_ENABLE;
     case pilot_cmd_type_gps_set_enable: return pilot_CMD_TYPE_GPS_SET_ENABLE;
     case pilot_cmd_type_usart_set_baudrate: return pilot_CMD_TYPE_USART_SET_BAUDRATE;

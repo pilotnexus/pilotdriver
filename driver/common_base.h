@@ -57,6 +57,8 @@ typedef enum
   pilot_cmd_type_plc_variables_write_config, /* rpi -> pilot command to notify the pilot that the plc variable write config stream will sent */
   pilot_cmd_type_plc_variables_get,          /* rpi <-> pilot request to send the configured plc variables */
   pilot_cmd_type_plc_variables_set,          /* rpi -> pilot comand to write the configure plc variables */
+  pilot_cmd_type_lora_set_enable,            /* rpi -> pilot command to enable / disable the lora module */
+  pilot_cmd_type_lora_get_enable,            /* rpi <-> pilot request to send the enabled state of the lora module */
   pilot_cmd_type_test_run                    /* rpi <-> pilot request to run internal tests */
 } pilot_cmd_type_t;
 
@@ -194,6 +196,10 @@ typedef enum {
   pilot_input_index_target = 0, /* encode the input index in the first byte */
   pilot_input_index_value  = 4  /* encode the input index in the last 4 bytes */
 } pilot_input_index_t;
+
+typedef enum {
+  pilot_lora_enable_index_value = 7 /* encode the enable value (0=disable, 1=enable) in the last byte */
+} pilot_lora_enable_index_t;
 
 /* helper enum for pilot_cmd_type_gps_set_enable / pilot_cmd_type_gps_get_enable handling */
 typedef enum {

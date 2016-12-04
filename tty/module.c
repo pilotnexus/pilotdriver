@@ -27,7 +27,8 @@ typedef enum {
   pilot_tty_module_type_rs232_2p,
   pilot_tty_module_type_ow,
   pilot_tty_module_type_ow_2p,
-  pilot_tty_module_type_pro
+  pilot_tty_module_type_profibus,
+  pilot_tty_module_type_lora
 } pilot_tty_module_type_t;
 
 static pilot_tty_module_type_t pilot_tty_get_module_type        (const pilot_module_type_t *module_type);
@@ -40,6 +41,9 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd);
 
 static void pilot_tty_proc_init  (module_slot_t slot, pilot_tty_module_type_t type);
 static void pilot_tty_proc_deinit(module_slot_t slot, pilot_tty_module_type_t type);
+
+static void pilot_tty_proc_lora_init(module_slot_t slot);
+static void pilot_tty_proc_lora_deinit(module_slot_t slot);
 
 static void pilot_tty_proc_gps_init (module_slot_t slot);
 static void pilot_tty_proc_gps_deinit(module_slot_t slot);
@@ -67,6 +71,8 @@ typedef struct {
   int driverId;
   int is_cmd_handler_registered;
   pilot_tty_module_type_t module_types[MODULES_COUNT];
+  volatile int enable_lora_updated[MODULES_COUNT];
+  volatile int enable_lora_value[MODULES_COUNT];
   volatile int enable_gps_updated[MODULES_COUNT];
   volatile int enable_gps_value[MODULES_COUNT];
   volatile int enable_onewire_updated[MODULES_COUNT];
@@ -83,7 +89,8 @@ static internals_t _internals = {
   .answer_timeout = 300
 };
 
-static const struct file_operations proc_pilot_module_enable_gps_fops,
+static const struct file_operations proc_pilot_module_enable_lora_fops,
+									                  proc_pilot_module_enable_gps_fops,
                                     proc_pilot_module_enable_onewire_fops,
                                     proc_pilot_module_enable_gsm_fops;
 
@@ -154,7 +161,8 @@ static const char rs485_2p[] = "r485_2p";
 static const char rs485_4w[] = "r485_4w";
 static const char rs232[]    = "r232";
 static const char rs232_2p[] = "r232_2p";
-static const char pro[]      = "pro";
+static const char profibus[] = "pb";
+static const char lora[]	   = "lora";
 
 #define IS_MODULE_TYPE(m, n) (strncmp(n, m->name, strlen(n)) == 0)
 
@@ -163,29 +171,31 @@ static pilot_tty_module_type_t pilot_tty_get_module_type(const pilot_module_type
   pilot_tty_module_type_t tty_type;
 
   if (IS_MODULE_TYPE(module_type, gsm))
-    tty_type = pilot_tty_module_type_gsm;
-  else if (IS_MODULE_TYPE(module_type, pro))
-    tty_type = pilot_tty_module_type_pro;
+	  tty_type = pilot_tty_module_type_gsm;
+  else if (IS_MODULE_TYPE(module_type, profibus))
+	  tty_type = pilot_tty_module_type_profibus;
   else if (IS_MODULE_TYPE(module_type, gps))
-    tty_type = pilot_tty_module_type_gps;
+	  tty_type = pilot_tty_module_type_gps;
   else if (IS_MODULE_TYPE(module_type, can_2p))
-    tty_type = pilot_tty_module_type_can_2p;
+	  tty_type = pilot_tty_module_type_can_2p;
   else if (IS_MODULE_TYPE(module_type, can))
-    tty_type = pilot_tty_module_type_can;
+	  tty_type = pilot_tty_module_type_can;
   else if (IS_MODULE_TYPE(module_type, rs485_2p))
-    tty_type = pilot_tty_module_type_rs485_2p;
+	  tty_type = pilot_tty_module_type_rs485_2p;
   else if (IS_MODULE_TYPE(module_type, rs485_4w))
-    tty_type = pilot_tty_module_type_rs485_4w;
+	  tty_type = pilot_tty_module_type_rs485_4w;
   else if (IS_MODULE_TYPE(module_type, rs485))
-    tty_type = pilot_tty_module_type_rs485;
+	  tty_type = pilot_tty_module_type_rs485;
   else if (IS_MODULE_TYPE(module_type, rs232_2p))
-    tty_type = pilot_tty_module_type_rs232_2p;
+	  tty_type = pilot_tty_module_type_rs232_2p;
   else if (IS_MODULE_TYPE(module_type, rs232))
-    tty_type = pilot_tty_module_type_rs232;
+	  tty_type = pilot_tty_module_type_rs232;
   else if (IS_MODULE_TYPE(module_type, ow_2p))
-    tty_type = pilot_tty_module_type_ow_2p;
+	  tty_type = pilot_tty_module_type_ow_2p;
   else if (IS_MODULE_TYPE(module_type, ow))
-    tty_type = pilot_tty_module_type_ow;
+	  tty_type = pilot_tty_module_type_ow;
+  else if (IS_MODULE_TYPE(module_type, lora))
+	  tty_type = pilot_tty_module_type_lora;
   else
     tty_type = pilot_tty_module_type_invalid;
 
@@ -324,6 +334,84 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
 
 // END pilot interface function implementation
 // *******************************************************************
+
+///////////////////////////////
+/* START lora proc functions */
+
+#define module_slot_t_from_proc_data(data) ((module_slot_t)data)
+#define module_slot_t_to_proc_data(slot) ((void*)slot)
+
+static void pilot_tty_send_lora_set_enable(module_slot_t slot, int enable)
+{
+	pilot_cmd_t cmd;
+	memset(&cmd, 0, sizeof(pilot_cmd_t));
+	cmd.target = target_t_from_module_slot_and_port(slot, 0);
+	cmd.type = pilot_cmd_type_lora_set_enable;
+	cmd.data[(int)pilot_lora_enable_index_value] = enable ? 1 : 0;
+	pilot_send_cmd(&cmd);
+}
+
+static void pilot_tty_send_lora_get_enable(module_slot_t slot)
+{
+	pilot_cmd_t cmd;
+	memset(&cmd, 0, sizeof(pilot_cmd_t));
+	cmd.target = target_t_from_module_slot_and_port(slot, 0);
+	cmd.type = pilot_cmd_type_lora_get_enable;
+	pilot_send_cmd(&cmd);
+}
+
+static int pilot_tty_lora_get_enable(module_slot_t slot, int timeout, int* enabled)
+{
+	int timedout;
+	unsigned long timestamp;
+
+	timedout = 0;
+
+	/* reset the updated state */
+	_internals.enable_lora_updated[(int)slot] = 0;
+
+	/* send a request for the lora enable flag */
+	pilot_tty_send_lora_get_enable((int)slot);
+
+	/* choose a point in time thats timeout ms in the future */
+	timestamp = jiffies + (timeout * HZ / 1000);
+
+	while (!_internals.enable_lora_updated[(int)slot])
+	{
+		if (time_after(jiffies, timestamp))
+		{
+			timedout = 1;
+			break;
+		}
+		udelay(100);
+	}
+
+	if (!timedout)
+		*enabled = _internals.enable_lora_value[(int)slot];
+
+	return timedout ? 0 : 1;
+}
+
+static char* pilot_tty_enable_lora_proc_name = { "enable_lora" };
+
+static void pilot_tty_proc_lora_init(module_slot_t slot)
+{
+	struct proc_dir_entry *module_dir;
+
+	/* retrieve the parent module dir from the base driver */
+	module_dir = pilot_get_proc_module_dir(slot);
+
+	/* create the /proc/pilot/moduleX/enable_lora entry */
+	proc_create_data(pilot_tty_enable_lora_proc_name, 0666, module_dir, &proc_pilot_module_enable_lora_fops, module_slot_t_to_proc_data(slot));
+}
+
+static void pilot_tty_proc_lora_deinit(module_slot_t slot)
+{
+	remove_proc_entry(pilot_tty_enable_lora_proc_name, pilot_get_proc_module_dir(slot));
+}
+
+/* END lora proc functions */
+///////////////////////////
 
 ///////////////////////////////
 /* START gps proc functions */
@@ -552,6 +640,7 @@ static void pilot_tty_proc_init(module_slot_t slot, pilot_tty_module_type_t type
 {
   switch (type)
   {
+    case pilot_tty_module_type_lora: pilot_tty_proc_lora_init(slot); break;
     case pilot_tty_module_type_gps: pilot_tty_proc_gps_init(slot); break;
     case pilot_tty_module_type_gsm: pilot_tty_proc_gsm_init(slot); break;
     case pilot_tty_module_type_ow:
@@ -566,6 +655,7 @@ static void pilot_tty_proc_deinit(module_slot_t slot, pilot_tty_module_type_t ty
 {
   switch (type)
   {
+    case pilot_tty_module_type_lora: pilot_tty_proc_lora_deinit(slot); break;
     case pilot_tty_module_type_gps: pilot_tty_proc_gps_deinit(slot); break;
     case pilot_tty_module_type_gsm: pilot_tty_proc_gsm_deinit(slot); break;
     case pilot_tty_module_type_ow:
@@ -575,6 +665,55 @@ static void pilot_tty_proc_deinit(module_slot_t slot, pilot_tty_module_type_t ty
     default: break;
   }
 }
+
+/* enable_lora file operations */
+
+static int pilot_tty_proc_pilot_module_enable_lora_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
+{
+	int new_value, data;
+
+	data = (int)PDE_DATA(file->f_inode);
+
+	/* try to get an int value from the user */
+	if (kstrtoint_from_user(buf, count, 10, &new_value) != SUCCESS)
+		return -EINVAL; /* return an error if the conversion fails */
+	else
+	{
+		/* send a lora enable cmd to the pilot */
+		pilot_tty_send_lora_set_enable(module_slot_t_from_proc_data(data), new_value);
+		return count; /* return that we successfully wrote the supplied bytes */
+	}
+}
+
+static int pilot_tty_proc_pilot_module_enable_lora_show(struct seq_file *file, void *data)
+{
+	int enabled, ret, module_index = (int)file->private;
+
+	if (pilot_tty_lora_get_enable(module_index, _internals.answer_timeout, &enabled)) /* try to get the enable state of the lora module */
+	{
+		seq_printf(file, "%i", enabled);
+		ret = 0;
+	}
+	else
+		ret = -EFAULT;
+
+	return ret;
+}
+
+static int pilot_tty_proc_pilot_module_enable_lora_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, pilot_tty_proc_pilot_module_enable_lora_show, PDE_DATA(inode));
+}
+
+static const struct file_operations proc_pilot_module_enable_lora_fops = {
+	.owner = THIS_MODULE,
+	.open = pilot_tty_proc_pilot_module_enable_lora_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release,
+	.write = pilot_tty_proc_pilot_module_enable_lora_write
+};
+
 
 /* enable_gps file operations */
 
