@@ -76,6 +76,7 @@ static gpio_config_t _internals_gpio[] = {
   {9, GPIO_MODE_ALT},  // SPI_MISO
   {10, GPIO_MODE_ALT}, // SPI_MOSI
   {11, GPIO_MODE_ALT}, // SPI_SCLK
+  {8, GPIO_MODE_ALT }, // SPI_CS
   {DATA_M2R, GPIO_MODE_INPUT}
 };
 
@@ -481,7 +482,7 @@ static void rpc_spi0_reset(volatile unsigned int* spi, int spiclk)
 static void rpc_spi0_enable(volatile unsigned int* spi0)
 {
   // enable SPI interface
-  SPI0_CNTLSTAT(spi0) = SPI0_CS_CHIPSEL0 | SPI0_CS_ACTIVATE;
+  SPI0_CNTLSTAT(spi0) = SPI0_CS_CHIPSEL0;
 }
 
 static void rpc_spi0_transmit(volatile unsigned int* spi0)
