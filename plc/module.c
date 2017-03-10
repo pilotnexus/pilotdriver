@@ -6,7 +6,7 @@
 #include "../driver/export.h" /* needed for rpcp main driver functions */
 #include "common.h"
 #include <linux/string.h>     /* for memset() */
-
+#include <linux/slab.h>       /* kmalloc() and kfree() */
 MODULE_LICENSE("GPL");
 
 // *******************************************************************
@@ -51,6 +51,19 @@ typedef struct {
   int index;                     /* the current data index */
 } pilot_plc_variables_write_values_t;
 
+#define MAX_QUALIFIER_STRING_SIZE 25
+#define MAX_VAR_STRING_SIZE 50
+
+typedef struct {
+  uint32_t number;
+  char resource[MAX_QUALIFIER_STRING_SIZE];
+  char instance[MAX_QUALIFIER_STRING_SIZE];
+  char variable[MAX_VAR_STRING_SIZE];
+  char iectype;
+} pilot_plc_variable_t;
+
+pilot_plc_variable_t *variables;
+
 typedef struct {
   pilot_plc_variables_config_t read_config;
   pilot_plc_variables_config_t write_config;
@@ -91,10 +104,13 @@ static pilot_cmd_handler_t pilot_cmd_handler = {
 static const char proc_plc_name[] = "plc";                       /* name of the plc directory in /proc/pilot/plc */
 static const char proc_plc_state_name[] = "state";               /* name of the state file in /proc/pilot/plc/state */
 static const char proc_plc_cycletimes_name[] = "cycletimes";     /* name of the cycletimes file in /proc/pilot/plc/cycletimes */
+static const char proc_plc_varconfig_name[] = "varconf";         /* name of the variable config directory in /proc/pilot/plc/varconf */
 static const char proc_plc_vars_name[] = "vars";                 /* name of the vars directory in /proc/pilot/plc/vars */
-static const char proc_plc_vars_readconfig_name[] = "readcfg";   /* name of the read config file in /proc/pilot/plc/vars/readcfg */
-static const char proc_plc_vars_writeconfig_name[] = "writecfg"; /* name of the write config file in /proc/pilot/plc/vars/writecfg */
-static const char proc_plc_vars_value_name[] = "value";          /* name of the value file in /proc/pilot/plc/vars/value */
+static const char proc_plc_vars_readconfig_name[] = "readcfg";   /* name of the read config file in /proc/pilot/plc/varconf/readcfg */
+static const char proc_plc_vars_writeconfig_name[] = "writecfg"; /* name of the write config file in /proc/pilot/plc/varconf/writecfg */
+static const char proc_plc_vars_value_name[] = "value";          /* name of the value file in /proc/pilot/plc/varconf/value */
+static const char proc_plc_variables_name[] = "variables";       /* name of the variables.csv file in /proc/pilot/plc/varconf/value */
+
 
 // *******************************************************************
 // START state
@@ -200,6 +216,49 @@ static const struct file_operations proc_plc_state_fops = {
   .open = pilot_plc_proc_state_open,
   .read = seq_read,
   .write = pilot_plc_proc_state_write,
+  .llseek = seq_lseek,
+  .release = single_release
+};
+
+static int pilot_plc_proc_variables_state_show(struct seq_file *file, void *data)
+{
+  int ret;
+
+  seq_printf(file, "blah");
+  ret = 0;
+
+  return ret;
+}
+
+static int pilot_plc_proc_variables_state_open(struct inode *inode, struct file *file)
+{
+  return single_open(file, pilot_plc_proc_variables_state_show, PDE_DATA(inode));
+}
+
+static int pilot_plc_proc_variables_state_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
+{
+  int newlines = 0, i=0;
+
+  //estimate maximum needed variable structs
+  for (i = 0; i < count; ++i)
+    if (buf[i] == '\r')
+      newlines++;
+
+  LOG_DEBUG("writing variable list, length: %i, lines %i", count, newlines);
+
+  variables = kmalloc(newlines * sizeof(pilot_plc_variable_t));
+
+  return count;
+}
+
+
+
+/* file operations for the /proc/pilot/plc/vars/variables */
+static const struct file_operations proc_plc_variables_fops = {
+  .owner = THIS_MODULE,
+  .open = pilot_plc_proc_variables_state_open,
+  .read = seq_read,
+  .write = pilot_plc_proc_variables_state_write,
   .llseek = seq_lseek,
   .release = single_release
 };
@@ -698,7 +757,7 @@ static const struct file_operations proc_plc_vars_value_fops = {
 /* register the /proc/pilot/plc/... files */
 static void pilot_plc_proc_init(void)
 {
-  struct proc_dir_entry *pilot_dir, *plc_dir, *vars_dir;
+  struct proc_dir_entry *pilot_dir, *plc_dir, *vars_config_dir, *vars_dir;
 
   /* get the /proc/pilot base dir */
   _internals.proc_pilot_dir = pilot_dir = pilot_get_proc_pilot_dir();
@@ -712,17 +771,20 @@ static void pilot_plc_proc_init(void)
   /* create the file /proc/pilot/plc/cycletimes (read-only) */
   proc_create_data(proc_plc_cycletimes_name, 0, plc_dir, &proc_plc_cycletimes_fops, NULL);
 
-  /* create the /proc/pilot/plc/vars directory */
-  _internals.proc_pilot_plc_vars_dir = vars_dir = proc_mkdir_mode(proc_plc_vars_name, 0, plc_dir);
+  /* create the /proc/pilot/plc/varconfig directory */
+  _internals.proc_pilot_plc_vars_dir = vars_config_dir = proc_mkdir_mode(proc_plc_varconfig_name, 0, plc_dir);
 
-  /* create the file /proc/pilot/plc/vars/read_config (w) */
-  proc_create_data(proc_plc_vars_readconfig_name, 0222, vars_dir, &proc_plc_vars_readconfig_fops, NULL);
+  /* create the file /proc/pilot/plc/varconfig/read_config (w) */
+  proc_create_data(proc_plc_vars_readconfig_name, 0222, vars_config_dir, &proc_plc_vars_readconfig_fops, NULL);
 
-  /* create the file /proc/pilot/plc/vars/write_config (w) */
-  proc_create_data(proc_plc_vars_writeconfig_name, 0222, vars_dir, &proc_plc_vars_writeconfig_fops, NULL);
+  /* create the file /proc/pilot/plc/varconfig/write_config (w) */
+  proc_create_data(proc_plc_vars_writeconfig_name, 0222, vars_config_dir, &proc_plc_vars_writeconfig_fops, NULL);
 
-  /* create the file /proc/pilot/plc/vars/value (r) */
-  proc_create_data(proc_plc_vars_value_name, 0666, vars_dir, &proc_plc_vars_value_fops, NULL);
+  /* create the file /proc/pilot/plc/varconfig/value (r) */
+  proc_create_data(proc_plc_vars_value_name, 0666, vars_config_dir, &proc_plc_vars_value_fops, NULL);
+
+  /* create the file /proc/pilot/plc/varconfig/variables (r/w) */
+  proc_create_data(proc_plc_variables_name, 0666, vars_config_dir, &proc_plc_variables_fops, NULL);
 }
 
 /* unregister the /proc/pilot/plc/... files */
@@ -734,20 +796,23 @@ static void pilot_plc_proc_deinit(void)
   /* remove the file /proc/pilot/plc/cycletimes */
   remove_proc_entry(proc_plc_cycletimes_name, _internals.proc_pilot_plc_dir);
 
-  /* remove the file /proc/pilot/plc/vars/read_config */
+  /* remove the file /proc/pilot/plc/varconfig/read_config */
   remove_proc_entry(proc_plc_vars_readconfig_name, _internals.proc_pilot_plc_vars_dir);
 
-  /* remove the file /proc/pilot/plc/vars/write_config */
+  /* remove the file /proc/pilot/plc/varconfig/write_config */
   remove_proc_entry(proc_plc_vars_writeconfig_name, _internals.proc_pilot_plc_vars_dir);
 
-  /* remove the file /proc/pilot/plc/vars/value */
+  /* remove the file /proc/pilot/plc/varconfig/value */
   remove_proc_entry(proc_plc_vars_value_name, _internals.proc_pilot_plc_vars_dir);
 
-  /* remove the directory /proc/pilot/plc/vars */
-  remove_proc_entry(proc_plc_vars_name, _internals.proc_pilot_plc_dir);
+  /* remove the directory /proc/pilot/plc/varconfig */
+  remove_proc_entry(proc_plc_varconfig_name, _internals.proc_pilot_plc_dir);
 
   /* remove the directory /proc/pilot/plc */
   remove_proc_entry(proc_plc_name, _internals.proc_pilot_dir);
+
+  /* create the file /proc/pilot/plc/varconfig/variables (r/w) */
+  remove_proc_entry(proc_plc_variables_name, _internals.proc_pilot_plc_vars_dir);
 }
 
 // *******************************************************************
@@ -829,6 +894,8 @@ static int __init pilot_plc_init()
 
   LOG_DEBUG("pilot_plc_init()");
 
+  variables = NULL; //init double pointer
+
   /* register the filesystem entries */
   pilot_plc_proc_init();
 
@@ -855,6 +922,9 @@ static int __init pilot_plc_init()
 static void __exit pilot_plc_exit()
 {
   LOG_DEBUG("pilot_plc_exit() called");
+
+  if (variables)
+    kfree(variables);
 
   /* unregister with the base driver */
   if (_internals.is_cmd_handler_registered) {

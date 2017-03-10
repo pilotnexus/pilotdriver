@@ -86,13 +86,14 @@ typedef enum
 
 } target_t;
 
-#define pilot_cmd_t_data_size 8
+#define pilot_cmd_t_data_size 10
 
 /* rpi command struct */
 typedef struct {
   char target; /* target of the command */
   char type;   /* type of the command */
   char data[pilot_cmd_t_data_size]; /* command data, value depends on type */
+  uint32_t crc;
 } pilot_cmd_t;
 
 typedef enum {

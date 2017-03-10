@@ -80,7 +80,7 @@ static gpio_config_t _internals_gpio[] = {
   {DATA_M2R, GPIO_MODE_INPUT}
 };
 
-static struct workqueue_struct *comm_wq;
+//static struct workqueue_struct *comm_wq;
 
 /* workqueue for bottom half of DATA_M2R irq handler */
 //static DECLARE_WORK(_internals_irq_data_m2r_work, rpc_irq_data_m2r_work_queue_handler);
@@ -90,6 +90,43 @@ DECLARE_TASKLET( _internals_irq_data_m2r_tasklet, rpc_irq_data_m2r_work_queue_ha
 
 /* spinlock to secure the spi data transfer */
 //static spinlock_t QueueLock;
+
+const int POLYNOME = 0x04C11DB7;
+const uint32_t INITIAL_CRC_VALUE = 0xFFFFFFFF;
+
+static uint32_t CrcSoftwareFunc(uint32_t Initial_Crc, uint32_t Input_Data)
+{
+  int bindex = 0;
+  uint32_t Crc = 0;
+
+  Crc = Initial_Crc ^ Input_Data;
+
+  for (bindex = 0; bindex < sizeof(int) * 8; bindex = bindex + 1)
+  {
+    if ((Crc & 0x80000000) > 0)
+    {
+      Crc = (Crc << 1) ^ POLYNOME;
+    }
+    else
+    {
+      Crc = (Crc << 1);
+    }
+  }
+  return Crc;
+}
+
+static uint crc(const char *data, int len)
+{
+  int i;
+  uint32_t crc = INITIAL_CRC_VALUE;
+
+  if (len % 4 != 0)
+    return 0;
+  for (i = 0; i < len; i+=4)
+    crc = CrcSoftwareFunc(crc, (uint32_t)data[i + 3] << 24 | (uint32_t)data[i + 2] << 16 | (uint32_t)data [i+1] << 8 | (uint32_t)data[i]);
+
+  return crc;
+}
 
 /* count of gpio configurations */
 static int _internals_gpio_count = sizeof(_internals_gpio) / sizeof(gpio_config_t);
@@ -652,7 +689,7 @@ static void pilot_spi0_handle_received_cmd_byte(char data)
     /* the following bytes of a command are the data bytes */
     default:
       i = _internals.current_cmd.index - pilot_current_cmd_index_data_begin;
-      if (i >= 0 && i < pilot_cmd_t_data_size)
+      if (i >= 0 && i < (pilot_cmd_t_data_size + sizeof(uint32_t))) //add the crc checksum to receive size
         _internals.current_cmd.cmd.data[i] = data;
       break;
   }
@@ -663,19 +700,31 @@ static void pilot_spi0_handle_received_cmd_byte(char data)
   /* is the received command completed? */
   if (_internals.current_cmd.index >= sizeof(pilot_cmd_t))
   {
-    LOG_DEBUG("cmd completed - target: %i, type: %i", _internals.current_cmd.cmd.target, _internals.current_cmd.cmd.type);
+    //int32_t crc_check = crcFast((char *) &_internals.current_cmd.cmd, sizeof(pilot_cmd_t) - (sizeof(crc)));
+    int32_t crc_check = crc((char *) &_internals.current_cmd.cmd, sizeof(pilot_cmd_t) - (sizeof(uint32_t)));
+
+    //LOG_DEBUG("cmd completed - target: %i, type: %i", _internals.current_cmd.cmd.target, _internals.current_cmd.cmd.type);
+    LOG_DEBUG("pilot_received_cmd: target: %i, type: %i, data: %x %x %x %x %x %x %x %x %x %x (CRC received: %X, own calculated CRC: %X)",(int) _internals.current_cmd.cmd.target,(int) _internals.current_cmd.cmd.type, _internals.current_cmd.cmd.data[0], _internals.current_cmd.cmd.data[1], _internals.current_cmd.cmd.data[2], _internals.current_cmd.cmd.data[3], _internals.current_cmd.cmd.data[4], _internals.current_cmd.cmd.data[5], _internals.current_cmd.cmd.data[6], _internals.current_cmd.cmd.data[7], _internals.current_cmd.cmd.data[8], _internals.current_cmd.cmd.data[9], _internals.current_cmd.cmd.crc, crc_check);
 
     /* reset the current cmd index */
     _internals.current_cmd.index = pilot_current_cmd_index_target;
 
-    /* update the stats */
-    _internals.stats.recv_cmd_count++;
-    if ((int)_internals.current_cmd.cmd.type < MAX_CMD_TYPE) /* sanity check */
-      _internals.stats.recv_cmd_type_count[(int)_internals.current_cmd.cmd.type]++;
-    memcpy(&_internals.last_recv_cmd, &_internals.current_cmd.cmd, sizeof(pilot_cmd_t));
+    if (crc_check == _internals.current_cmd.cmd.crc) 
+    {
+      /* update the stats */
+      _internals.stats.recv_cmd_count++;
+      if ((int)_internals.current_cmd.cmd.type < MAX_CMD_TYPE) /* sanity check */
+        _internals.stats.recv_cmd_type_count[(int)_internals.current_cmd.cmd.type]++;
+      memcpy(&_internals.last_recv_cmd, &_internals.current_cmd.cmd, sizeof(pilot_cmd_t));
 
-    /* handle the command by copy */
-    pilot_spi0_handle_received_cmd(_internals.current_cmd.cmd);
+      /* handle the command by copy */
+      pilot_spi0_handle_received_cmd(_internals.current_cmd.cmd);
+    }
+    else
+    {
+      _internals.stats.crc_errors++;
+
+    }
   }
 }
 
@@ -1372,16 +1421,17 @@ static int pilot_proc_pilot_stats_show(struct seq_file *file, void *data)
     _internals.stats.sent_byte_count[target_module3_port1] + _internals.stats.sent_byte_count[target_module3_port2],
     _internals.stats.sent_byte_count[target_module4_port1] + _internals.stats.sent_byte_count[target_module4_port2]);
 
-  seq_printf(file, "recv cmds\t%u\n", _internals.stats.recv_cmd_count);
+  seq_printf(file, "recv cmds\t\t%u\n", _internals.stats.recv_cmd_count);
   for (i = 0; i < MAX_CMD_TYPE; i++)
     if (_internals.stats.recv_cmd_type_count[i] > 0)
-      seq_printf(file, "%s\t%i\n", pilot_cmd_type_to_name(i), _internals.stats.recv_cmd_type_count[i]);
+      seq_printf(file, "%s\t\t%i\n", pilot_cmd_type_to_name(i), _internals.stats.recv_cmd_type_count[i]);
 
-  seq_printf(file, "sent cmds\t%u\n", _internals.stats.sent_cmd_count);
+  seq_printf(file, "sent cmds\t\t%u\n", _internals.stats.sent_cmd_count);
   for (i = 0; i < MAX_CMD_TYPE; i++)
     if (_internals.stats.sent_cmd_type_count[i] > 0)
-      seq_printf(file, "%s\t%i\n", pilot_cmd_type_to_name(i), _internals.stats.sent_cmd_type_count[i]);
+      seq_printf(file, "%s\t\t%i\n", pilot_cmd_type_to_name(i), _internals.stats.sent_cmd_type_count[i]);
 
+  seq_printf(file, "cmd CRC checksum errors \t\t%u\n", _internals.stats.crc_errors);
   return 0;
 }
 
@@ -1868,8 +1918,12 @@ void pilot_send(target_t target, const char* data, int count)
 /* sends the supplied command to the stm by calling pilot_send() internally */
 void pilot_send_cmd(pilot_cmd_t* cmd)
 {
-  LOG_DEBUG("pilot_send_cmd: target: %i, type: %i, data: %x %x %x %x %x %x %x %x",(int) cmd->target,(int) cmd->type, cmd->data[0], cmd->data[1], cmd->data[2], cmd->data[3], cmd->data[4], cmd->data[5], cmd->data[6], cmd->data[7]);
-  pilot_send(target_base, (char*)cmd, sizeof(pilot_cmd_t));
+  //cmd->crc = crcFast((char *) cmd, sizeof(pilot_cmd_t) - (sizeof(crc)));
+  //cmd->crc = crc((char *) cmd, sizeof(pilot_cmd_t) - (sizeof(uint32_t)));
+  cmd->crc = crc((char *) cmd, sizeof(pilot_cmd_t) - (sizeof(uint32_t)));
+
+  LOG_DEBUG("pilot_send_cmd: target: %x, type: %x, data: %x %x %x %x %x %x %x %x %x %x (crc: %X)",(int) cmd->target,(int) cmd->type, cmd->data[0], cmd->data[1], cmd->data[2], cmd->data[3], cmd->data[4], cmd->data[5], cmd->data[6], cmd->data[7], cmd->data[8], cmd->data[9], cmd->crc);
+  pilot_send(target_base, (char *)cmd, sizeof(pilot_cmd_t));
 
   /* update the stats */
   _internals.stats.sent_cmd_count++;

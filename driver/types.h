@@ -59,6 +59,7 @@ typedef struct {
   unsigned int sent_cmd_count;
   unsigned int recv_cmd_type_count[MAX_CMD_TYPE];
   unsigned int sent_cmd_type_count[MAX_CMD_TYPE];
+  unsigned int crc_errors;
 } stats_t;
 
 #define MAX_TARGETS 255
