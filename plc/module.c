@@ -367,6 +367,7 @@ void debug_print_var_line(int number, enum iecvarclass type, enum iectypes iecva
 
 }
 
+/*
 int variable_read_proc(struct file *filp,char *buf,size_t count,loff_t *offp ) 
 {
   int ret = 0;
@@ -395,19 +396,49 @@ int variable_read_proc(struct file *filp,char *buf,size_t count,loff_t *offp )
 
   return ret;
 }
+*/
 
-//static int pilot_plc_proc_variable_state_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
-//{
-//  return count;
-//}
+static int pilot_plc_proc_var_show(struct seq_file *file, void *data)
+{
+  int ret = 0;
+  pilot_plc_variable_t *variable = (pilot_plc_variable_t *)file->private;
+  if (variable)
+  {
+    if (pilot_plc_try_get_variable(100, variable) == SUCCESS)
+    {
+      seq_printf(file, "%i", *((uint32_t*)variable->value)); 
+    }
+  }
+  else
+  {
+     ret = -EFAULT;
+  }
+
+  return ret;
+}
+
+static int pilot_plc_proc_var_open(struct inode *inode, struct file *file)
+{
+  return single_open(file, pilot_plc_proc_var_show, PDE_DATA(inode));
+}
+
+
+
+static int pilot_plc_proc_var_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
+{
+  return count;
+}
 
 /* file operations for the /proc/pilot/plc/vars/variables */
 static const struct file_operations proc_plc_variable_fops = {
   .owner = THIS_MODULE,
-  .read = variable_read_proc,
+  //.read = variable_read_proc,
+  .open = pilot_plc_proc_var_open,
+  .read = seq_read,
+  .write = pilot_plc_proc_var_write,
+  .llseek = seq_lseek,
+  .release = single_release
 };
-
-
 
 void malloc_var(int number, enum iecvarclass type, enum iectypes iecvar, const char *variable, int varLength)
 {
