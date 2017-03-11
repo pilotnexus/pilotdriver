@@ -56,10 +56,12 @@ typedef enum
   pilot_cmd_type_plc_variables_read_config,  /* rpi -> pilot command to notify the pilot that the plc variable read config stream will be sent */
   pilot_cmd_type_plc_variables_write_config, /* rpi -> pilot command to notify the pilot that the plc variable write config stream will sent */
   pilot_cmd_type_plc_variables_get,          /* rpi <-> pilot request to send the configured plc variables */
-  pilot_cmd_type_plc_variables_set,          /* rpi -> pilot comand to write the configure plc variables */
+  pilot_cmd_type_plc_variables_set,          /* rpi -> pilot command to write the configure plc variables */
   pilot_cmd_type_lora_set_enable,            /* rpi -> pilot command to enable / disable the lora module */
   pilot_cmd_type_lora_get_enable,            /* rpi <-> pilot request to send the enabled state of the lora module */
-  pilot_cmd_type_test_run                    /* rpi <-> pilot request to run internal tests */
+  pilot_cmd_type_test_run,                    /* rpi <-> pilot request to run internal tests */
+  pilot_cmd_type_plc_variable_get,          /* rpi <-> pilot command to get single variable */
+  pilot_cmd_type_plc_variable_set,          /* rpi -> pilot command to write single */
 } pilot_cmd_type_t;
 
 /* enum that specifies the target of the stream communication
