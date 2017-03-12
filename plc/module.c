@@ -150,13 +150,14 @@ static const char proc_plc_variables_name[] = "variables";       /* name of the 
 // *******************************************************************
 // START VARIABLE.csv funtions
 
-static void pilot_plc_send_set_variable_cmd(uint16_t varnumber)
+static void pilot_plc_send_set_variable_cmd(uint16_t varnumber, char *value)
 {
   pilot_cmd_t cmd;
   memset(&cmd, 0, sizeof(pilot_cmd_t));
   cmd.target = target_base;
   cmd.type = pilot_cmd_type_plc_variable_set;
 
+  memcpy(cmd.data, value, 8);
   cmd.data[8] = varnumber & 0xFF; 
   cmd.data[9] = varnumber >> 8; 
 
@@ -186,6 +187,42 @@ static int pilot_plc_try_get_variable(int timeout, pilot_plc_variable_t *variabl
 
   /* set the plc state get request */
   pilot_plc_send_get_variable_cmd(variable->number);
+
+  /* pick a time that is timeout ms in the future */
+  timestamp = jiffies + (timeout * HZ / 1000);
+
+  /* wait until the state is updated or the timeout occurs */
+  while (variable->is_variable_updated == 0) 
+    if (time_after(jiffies, timestamp))
+    {
+      is_timedout = 1;
+      break;
+    }
+
+  /* read the updated state */
+  if (!is_timedout)
+  {
+    LOG_DEBUG("variable %i successfully received from pilot\n", variable->number);
+  }
+  else
+  {
+    //LOG_INFO("pilot_plc_try_get_state() timedout while waiting for plc state!");
+    LOG_DEBUG("variable %i timeout getting variable\n", variable->number);
+  }
+
+  return is_timedout ? -1 : SUCCESS;
+}
+
+static int pilot_plc_try_set_variable(int timeout, pilot_plc_variable_t *variable, char *value)
+{
+  int is_timedout = 0;
+  unsigned long timestamp;
+
+  /* reset the variable updated flag */
+  variable->is_variable_updated = 0;
+
+  /* set the plc state get request */
+  pilot_plc_send_set_variable_cmd(variable->number, value);
 
   /* pick a time that is timeout ms in the future */
   timestamp = jiffies + (timeout * HZ / 1000);
@@ -258,6 +295,40 @@ int readlinedelimited(const char *buf, int *index, int count, const char delimit
 
   (*index)++; //advance to the next char so this function can be used in a loop directly
   return col;
+}
+
+
+const char * getVarClassStr(enum iecvarclass varclass)
+{
+  switch(varclass)
+  {
+    case VAR: return "VAR"; break;
+    case EXT: return "EXT"; break;
+    default: return "NONE"; break;
+  }
+}
+
+const char * getIecTypeStr(enum iectypes type)
+{  
+  switch(type)
+  { 
+    case IEC_BOOL: return  "BOOL"; break;
+    case IEC_SINT: return  "SINT"; break;
+    case IEC_INT: return   "INT"; break;
+    case IEC_DINT: return  "DINT"; break;
+    case IEC_LINT: return  "LINT"; break;
+    case IEC_USINT: return "USINT"; break;
+    case IEC_UINT: return  "UINT"; break;
+    case IEC_UDINT: return "UDINT"; break;
+    case IEC_ULINT: return "ULINT"; break;
+    case IEC_BYTE: return  "BYTE"; break;
+    case IEC_WORD: return  "WORD"; break;
+    case IEC_DWORD: return "DWORD"; break;
+    case IEC_LWORD: return "LWORD"; break;
+    case IEC_REAL: return  "REAL"; break;
+    case IEC_LREAL: return "LREAL"; break;
+    default: return "NONE"; break;
+  }
 }
 
 enum iectypes strToIECVar(const char* str, int len)
@@ -349,7 +420,11 @@ int analyzecsvbuffer(const char *buf, int fsize, void(*handleline)(int , enum ie
           if (readlinedelimited(&buf[col_start[2]], &varindex, col_length[2], '.', var_col_start, var_col_length, MAX_VAR_COLS) >= 2)
           {
             if (handleline != NULL)
-              handleline(number, type, iecVar, &buf[col_start[2]], col_length[2]);
+            {
+              //remove first variable segment CONFIG, so add the start index of second var segment
+              //and remove the length of the first variable segment and one extra char for the separator
+              handleline(number, type, iecVar, &buf[col_start[2]+var_col_start[1]], col_length[2]-var_col_length[0]-1);
+            }
             if (maxnumber < number)
               maxnumber = number;
           }
@@ -363,40 +438,8 @@ int analyzecsvbuffer(const char *buf, int fsize, void(*handleline)(int , enum ie
 void debug_print_var_line(int number, enum iecvarclass type, enum iectypes iecvar, const char *variable, int varLength)
 {
   //add debug if wanted
-  LOG_DEBUG("variable nr: %i:  %.*s\n", number, varLength, variable);
-
+  LOG_DEBUG("variable nr: %i:  '%.*s'\n", number, varLength, variable);
 }
-
-/*
-int variable_read_proc(struct file *filp,char *buf,size_t count,loff_t *offp ) 
-{
-  int ret = 0;
-  pilot_plc_variable_t *variable = (pilot_plc_variable_t *)PDE_DATA(file_inode(filp));
-
-  if (variable)
-  {
-    if (copy_to_user(buf,"OK", 2))
-      ret = -EFAULT;
-
-    LOG_DEBUG("variable %i requested. buffer count: %i\n", variable->number, count);
-
-    if (pilot_plc_try_get_variable(100, variable) == SUCCESS)
-    {
-      LOG_DEBUG("variable %i value received (%x %x %x %x %x %x %x %x)\n", variable->number, variable->value[0], variable->value[1], variable->value[2], variable->value[3], variable->value[4], variable->value[5], variable->value[6], variable->value[7] );
-    }
-    return 0; //
-  }
-  else
-    ret = -EFAULT; 
-  //else
-  //{
-    //seq_printf(file, "this is variable number %i", variable->number);
-  //  ret = 0;
-  //}
-
-  return ret;
-}
-*/
 
 static int pilot_plc_proc_var_show(struct seq_file *file, void *data)
 {
@@ -422,11 +465,27 @@ static int pilot_plc_proc_var_open(struct inode *inode, struct file *file)
   return single_open(file, pilot_plc_proc_var_show, PDE_DATA(inode));
 }
 
-
-
 static int pilot_plc_proc_var_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
-  return count;
+    int new_value, ret;
+    char value[8];
+    pilot_plc_variable_t *variable = (pilot_plc_variable_t *)PDE_DATA(file->f_inode);
+
+  /* try to get an int value from the user */
+    //change to copy_from_user(msg,buf,count) for more generic use
+  if (kstrtoint_from_user(buf, count, 10, &new_value) != SUCCESS)
+    ret = -EINVAL; /* return an error if the conversion fails */
+  else if (variable != NULL)
+  {
+   /* send a plc state set cmd to the pilot */ 
+   LOG_DEBUG("writing variable %i to plc. new value %i\n", variable->number, new_value);
+  
+   memcpy(value, &new_value, sizeof(int));
+   pilot_plc_try_set_variable(100, variable, value);
+
+    ret = count; /* we processed the complete input */
+  }
+  return ret;
 }
 
 /* file operations for the /proc/pilot/plc/vars/variables */
@@ -613,9 +672,22 @@ static const struct file_operations proc_plc_state_fops = {
 
 static int pilot_plc_proc_variables_state_show(struct seq_file *file, void *data)
 {
-  int ret;
+  int ret, i;
 
-  seq_printf(file, "blah");
+  if (_internals.variables_count > 0)
+  {
+    for (i = 0; i < _internals.variables_count; ++i)
+    {
+        if (_internals.variables[i] != NULL)
+        {
+            seq_printf(file, "%i;%s;%s;%s;%s;\n", _internals.variables[i]->number,
+            getVarClassStr(_internals.variables[i]->varclass),
+            _internals.variables[i]->variable,
+            _internals.variables[i]->variable,
+            getIecTypeStr( _internals.variables[i]->iectype));
+        }
+    }
+  }
   ret = 0;
 
   return ret;
@@ -1235,15 +1307,18 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
       memcpy(_internals.variables[number]->value, cmd.data, 8);
       _internals.variables[number]->is_variable_updated = 1;
     }
-
-    //if (_internals.variables[])
-
     ret = pilot_cmd_handler_status_handled;
     break;
+
     case pilot_cmd_type_plc_variable_set:
     number = *((uint16_t *)&cmd.data[8]) & 0xFFF;
-    LOG_DEBUG("pilot_callback_cmd_received() received pilot_cmd_type_plc_variable_set answer, variable number %i", number);
-
+    if (number < _internals.variables_count)
+    {
+      number = *((uint16_t *)&cmd.data[8]) & 0xFFF;
+      LOG_DEBUG("pilot_callback_cmd_received() received pilot_cmd_type_plc_variable_set answer, variable number %i", number);
+      memcpy(_internals.variables[number]->value, cmd.data, 8);
+      _internals.variables[number]->is_variable_updated = 1;
+    }
     ret = pilot_cmd_handler_status_handled;
     break;
 
