@@ -9,6 +9,9 @@
 #include <linux/slab.h>       /* kmalloc() and kfree() */
 #include <linux/gfp.h>        /* flags for kmalloc() */
 #include <asm/uaccess.h>      /* copy_to_user() */
+#include <linux/wait.h>
+#include <linux/poll.h>       /* file polling */
+#include <linux/sched.h>      /* TASK_INTERRUPTABLE */
 
 MODULE_LICENSE("GPL");
 
@@ -79,6 +82,8 @@ enum iectypes {
 
 enum iecvarclass {
   NONE = -1,
+  IN,
+  OUT,
   VAR,
   EXT
 };
@@ -88,6 +93,7 @@ typedef struct {
   enum iecvarclass varclass;
   enum iectypes iectype;
   volatile int is_variable_updated;
+  wait_queue_head_t queue;
   char value[8];
   char *variable;
 } pilot_plc_variable_t;
@@ -158,7 +164,7 @@ static void pilot_plc_send_set_variable_cmd(uint16_t varnumber, char *value)
   cmd.type = pilot_cmd_type_plc_variable_set;
 
   memcpy(cmd.data, value, 8);
-  cmd.data[8] = varnumber & 0xFF; 
+  cmd.data[8] = varnumber & 0xFF;
   cmd.data[9] = varnumber >> 8; 
 
   pilot_send_cmd(&cmd);
@@ -177,7 +183,7 @@ static void pilot_plc_send_get_variable_cmd(uint16_t varnumber)
   pilot_send_cmd(&cmd);
 }
 
-static int pilot_plc_try_get_variable(int timeout, pilot_plc_variable_t *variable)
+static int pilot_plc_try_get_variable(int timeout, pilot_plc_variable_t *variable, uint16_t flags)
 {
   int is_timedout = 0;
   unsigned long timestamp;
@@ -186,7 +192,7 @@ static int pilot_plc_try_get_variable(int timeout, pilot_plc_variable_t *variabl
   variable->is_variable_updated = 0;
 
   /* set the plc state get request */
-  pilot_plc_send_get_variable_cmd(variable->number);
+  pilot_plc_send_get_variable_cmd(((uint16_t)variable->number) | flags);
 
   /* pick a time that is timeout ms in the future */
   timestamp = jiffies + (timeout * HZ / 1000);
@@ -213,7 +219,7 @@ static int pilot_plc_try_get_variable(int timeout, pilot_plc_variable_t *variabl
   return is_timedout ? -1 : SUCCESS;
 }
 
-static int pilot_plc_try_set_variable(int timeout, pilot_plc_variable_t *variable, char *value)
+static int pilot_plc_try_set_variable(int timeout, pilot_plc_variable_t *variable, uint16_t flags, char *value)
 {
   int is_timedout = 0;
   unsigned long timestamp;
@@ -222,7 +228,7 @@ static int pilot_plc_try_set_variable(int timeout, pilot_plc_variable_t *variabl
   variable->is_variable_updated = 0;
 
   /* set the plc state get request */
-  pilot_plc_send_set_variable_cmd(variable->number, value);
+  pilot_plc_send_set_variable_cmd(((uint16_t)variable->number) | flags, value);
 
   /* pick a time that is timeout ms in the future */
   timestamp = jiffies + (timeout * HZ / 1000);
@@ -302,10 +308,28 @@ const char * getVarClassStr(enum iecvarclass varclass)
 {
   switch(varclass)
   {
+    case IN: return "IN"; break;
+    case OUT: return "OUT"; break;
     case VAR: return "VAR"; break;
     case EXT: return "EXT"; break;
     default: return "NONE"; break;
   }
+}
+
+enum iecvarclass strToIECVarClass(const char *str, int len)
+{
+  enum iecvarclass var = NONE;
+
+  if (strncmp(str, "IN", len) == 0)
+    var = IN;
+  else if (strncmp(str, "OUT", len) == 0)
+    var = OUT;
+  else if (strncmp(str, "VAR", len) == 0)
+    var = VAR;
+  else if (strncmp(str, "EXT", len) == 0)
+    var = EXT;
+
+  return var;
 }
 
 const char * getIecTypeStr(enum iectypes type)
@@ -403,11 +427,7 @@ int analyzecsvbuffer(const char *buf, int fsize, void(*handleline)(int , enum ie
 
         number = toInt(&buf[col_start[0]], col_length[0]);
         //check if var class is ok
-        if (strncmp(&buf[col_start[1]], "VAR", col_length[1]) == 0) //ok
-          type = VAR;
-        else if (strncmp(&buf[col_start[1]], "EXT", col_length[1]) == 0) //also ok
-          type = EXT;
-
+        type = strToIECVarClass(&buf[col_start[1]], col_length[1]);
         //check iec var
         iecVar = strToIECVar(&buf[col_start[cols - 1]], col_length[cols - 1]);
 
@@ -447,7 +467,7 @@ static int pilot_plc_proc_var_show(struct seq_file *file, void *data)
   pilot_plc_variable_t *variable = (pilot_plc_variable_t *)file->private;
   if (variable)
   {
-    if (pilot_plc_try_get_variable(100, variable) == SUCCESS)
+    if (pilot_plc_try_get_variable(100, variable, (uint16_t)0) == SUCCESS)
     {
       seq_printf(file, "%i", *((uint32_t*)variable->value)); 
     }
@@ -468,24 +488,62 @@ static int pilot_plc_proc_var_open(struct inode *inode, struct file *file)
 static int pilot_plc_proc_var_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
     int new_value, ret;
+    bool use_set_variable = true;
+    uint16_t flag = 0;
     char value[8];
+    int index = 0;
     pilot_plc_variable_t *variable = (pilot_plc_variable_t *)PDE_DATA(file->f_inode);
 
-  /* try to get an int value from the user */
-    //change to copy_from_user(msg,buf,count) for more generic use
-  if (kstrtoint_from_user(buf, count, 10, &new_value) != SUCCESS)
-    ret = -EINVAL; /* return an error if the conversion fails */
-  else if (variable != NULL)
-  {
-   /* send a plc state set cmd to the pilot */ 
-   LOG_DEBUG("writing variable %i to plc. new value %i\n", variable->number, new_value);
-  
-   memcpy(value, &new_value, sizeof(int));
-   pilot_plc_try_set_variable(100, variable, value);
+    if (count > 0)
+      switch (buf[0])
+      {
+        case 'F': flag = PLC_VAR_FORCE_BIT; index++; break;
+        case 'R': flag = PLC_VAR_UNFORCE_BIT; index++; break;
+        case 'S': flag = PLC_VAR_SUBSCRIBE_BIT; use_set_variable = false; index++; break;
+        case 'U': flag = PLC_VAR_UNSUBSCRIBE_BIT; use_set_variable = false; index++; break;
+      }
 
-    ret = count; /* we processed the complete input */
+  if (use_set_variable)
+  {
+    /* try to get an int value from the user */
+      //change to copy_from_user(msg,buf,count) for more generic use
+    if (kstrtoint_from_user(&buf[index], count-index, 10, &new_value) != SUCCESS)
+      ret = -EINVAL; /* return an error if the conversion fails */
+    else if (variable != NULL)
+    {
+      /* send a plc state set cmd to the pilot */ 
+      LOG_DEBUG("writing variable %i to plc. new value %i\n", variable->number, new_value);
+    
+      memcpy(value, &new_value, sizeof(int));
+      if (pilot_plc_try_set_variable(100, variable, flag, value) != SUCCESS)
+        ret = -EINVAL;
+      else
+        ret = count; /* we processed the complete input */
+    }
+  }
+  else
+  { //subscribe flags detected, use get_variable to set subscription
+     if (pilot_plc_try_get_variable(100, variable, flag) != SUCCESS)
+        ret = -EINVAL;
+      else
+        ret = count; /* we processed the complete input */
   }
   return ret;
+}
+
+static unsigned int pilot_plc_proc_var_poll(struct file *file, poll_table *wait)
+{
+  pilot_plc_variable_t *variable = (pilot_plc_variable_t *)PDE_DATA(file->f_inode);
+  LOG_DEBUG("PILOT POLL CALLED!");
+
+
+  LOG_DEBUG("pilot_plc_proc_var_poll (%s)", variable->variable);
+
+  poll_wait(file, &variable->queue, wait);
+
+  LOG_DEBUG("pilot_plc_proc_var_poll event received (%s)",variable->variable);
+
+  return POLLIN | POLLRDNORM;
 }
 
 /* file operations for the /proc/pilot/plc/vars/variables */
@@ -495,6 +553,7 @@ static const struct file_operations proc_plc_variable_fops = {
   .open = pilot_plc_proc_var_open,
   .read = seq_read,
   .write = pilot_plc_proc_var_write,
+  .poll = pilot_plc_proc_var_poll,
   .llseek = seq_lseek,
   .release = single_release
 };
@@ -507,6 +566,7 @@ void malloc_var(int number, enum iecvarclass type, enum iectypes iecvar, const c
   _internals.variables[number]->number = number;
   _internals.variables[number]->varclass = type;
   _internals.variables[number]->iectype = iecvar;
+  init_waitqueue_head(&_internals.variables[number]->queue);
   _internals.variables[number]->is_variable_updated = 0;
   _internals.variables[number]->variable = (char*)kzalloc(varLength+1 * sizeof(char), __GFP_NOFAIL | __GFP_IO | __GFP_FS);
 
@@ -1295,17 +1355,25 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
 {
   pilot_cmd_handler_status_t ret;
   uint16_t number;
+  uint16_t flags;
   LOG_DEBUG("pilot_callback_cmd_received() called");
 
   switch (cmd.type)
   {
     case pilot_cmd_type_plc_variable_get:
     number = *((uint16_t *)&cmd.data[8]) & 0xFFF;
+    flags = *((uint16_t *)&cmd.data[8]) & 0xF000;
     if (number < _internals.variables_count)
     {
-    LOG_DEBUG("pilot_callback_cmd_received() received pilot_cmd_type_plc_variable_get answer, variable number %i", _internals.variables[number]->number);
+      LOG_DEBUG("pilot_callback_cmd_received() received pilot_cmd_type_plc_variable_get answer, variable number %i", _internals.variables[number]->number);
       memcpy(_internals.variables[number]->value, cmd.data, 8);
       _internals.variables[number]->is_variable_updated = 1;
+
+      if (flags & PLC_VAR_SUBSCRIBE_BIT)
+      {
+        LOG_DEBUG("Subscription Event (pilot_cmd_type_plc_variable_get), variable number %i", _internals.variables[number]->number);
+        wake_up_interruptible(&_internals.variables[number]->queue);
+      }
     }
     ret = pilot_cmd_handler_status_handled;
     break;
