@@ -786,7 +786,7 @@ static pilot_cmd_handler_status_t pilot_io_callback_cmd_received(pilot_cmd_t cmd
   u64 value;
   pilot_cmd_handler_status_t ret;
 
-  LOG_DEBUG("pilot_io_callback_cmd_received() called");
+  LOG_DEBUGALL("pilot_io_callback_cmd_received() called");
 
   /* get the module index */
   module_index = (int)target_t_get_module_slot(cmd.target); 

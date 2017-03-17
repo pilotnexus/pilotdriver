@@ -261,7 +261,7 @@ static int pilot_rtc_get_time(struct device* dev, struct rtc_time *t)
 
   }
 
-  LOG_DEBUG("pilot_rtc_get_time() exiting");
+  LOG_DEBUGALL("pilot_rtc_get_time() exiting");
 
   return rtc_valid_tm(t);
 }
@@ -290,7 +290,7 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
 {
   pilot_cmd_handler_status_t ret;
   struct rtc_time* t = &_internals.time;
-  LOG_DEBUG("pilot_callback_cmd_received() called");
+  LOG_DEBUGALL("pilot_callback_cmd_received() called");
 
   switch (cmd.type)
   {

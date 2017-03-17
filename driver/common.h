@@ -32,6 +32,12 @@
 #define LOG_DEBUG(fmt, args...) do {} while(0);
 #endif
 
+#ifdef DEBUGALL
+#define LOG_DEBUGALL(fmt, args...) do { printk( KERN_DEBUG MODULE_NAME ": " fmt "\n", ## args); } while(0)
+#else 
+#define LOG_DEBUGALL(fmt, args...) do {} while(0);
+#endif
+
 /* use LOG() instead of printk() to prefix "rpc: " to traced messages */
 #define LOG(LEVEL, fmt, args...) do { printk( LEVEL MODULE_NAME ": " fmt "\n", ## args); } while(0)
 #define LOG_INFO(fmt, args...) do { printk( KERN_INFO MODULE_NAME ": " fmt "\n", ## args); } while(0)

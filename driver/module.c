@@ -163,7 +163,7 @@ static void pilot_internals_init()
 static int __init rpc_init(void)
 {
   int i, retValue = SUCCESS;
-  LOG_DEBUG("rpc_init()");
+  LOG_DEBUG("pilot_init()");
   
   //alloc workqueue
   /*
@@ -462,7 +462,7 @@ static irqreturn_t rpc_irq_data_m2r_handler(int irq, void* dev_id)
     //schedule_work(&_internals_irq_data_m2r_work );
 	tasklet_schedule(&_internals_irq_data_m2r_tasklet);	
 	
-    LOG_DEBUG("queue_work() for rpc_irq_data_m2r_handler() successful");
+    LOG_DEBUGALL("queue_work() for rpc_irq_data_m2r_handler() successful");
   //}
 
   return IRQ_HANDLED;
@@ -472,7 +472,7 @@ static irqreturn_t rpc_irq_data_m2r_handler(int irq, void* dev_id)
 //static void rpc_irq_data_m2r_work_queue_handler(struct work_struct* args)
 static void rpc_irq_data_m2r_work_queue_handler(unsigned long data)
 {
-  LOG_DEBUG("rpc_irq_data_m2r_work_queue_handler() called");
+  LOG_DEBUGALL("rpc_irq_data_m2r_work_queue_handler() called");
 
   /* start the spi transmission */
   rpc_spi0_transmit(_internals.Spi0);
@@ -529,7 +529,7 @@ static void rpc_spi0_transmit(volatile unsigned int* spi0)
   int max_data_per_irq = 1000, data_count = 0; /* guard against stuck DATA_M2R high pin! */
 
   //spin_lock( &QueueLock );
-  LOG_DEBUG("rpc_spi0_transmit() called");
+  LOG_DEBUGALL("rpc_spi0_transmit() called");
 
   while (1)
   {
@@ -551,7 +551,7 @@ static void rpc_spi0_transmit(volatile unsigned int* spi0)
 
   }
 
-  LOG_DEBUG("rpc_spi0_transmit() done");
+  LOG_DEBUGALL("rpc_spi0_transmit() done");
   //spin_unlock(&QueueLock);
 }
 
@@ -633,7 +633,7 @@ static void pilot_spi0_handle_received_cmd(pilot_cmd_t cmd)
   struct list_head *ptr;
   pilot_cmd_handler_t *handler;
 
-  LOG_DEBUG("pilot_spi0_handle_received_cmd() called");
+  LOG_DEBUGALL("pilot_spi0_handle_received_cmd() called");
 
   /* handle the cmd */
   pilot_spi0_handle_received_base_cmd(&cmd);
@@ -671,7 +671,7 @@ static void pilot_spi0_handle_received_cmd_byte(char data)
     _internals.current_cmd_timeout = jiffies + timeout;
   }
 
-  LOG_DEBUG("pilot_spi0_handle_received_cmd_byte(data=%i), current_cmd.index=%i", data, _internals.current_cmd.index);
+  LOG_DEBUGALL("pilot_spi0_handle_received_cmd_byte(data=%i), current_cmd.index=%i", data, _internals.current_cmd.index);
 
   /* add the data to the current rpcp command */
   switch (_internals.current_cmd.index)
@@ -797,7 +797,7 @@ inline static spidata_t rpc_spi0_dataexchange(volatile unsigned int* spi0,
 
   miso = ( (data1 << 8) | data2 );
 
-  LOG_DEBUG("send: %X, recv: %X", mosi, miso);
+  LOG_DEBUGALL("send: %X, recv: %X", mosi, miso);
 
   return miso;
 }
@@ -1880,7 +1880,7 @@ int pilot_try_send(target_t target, const char* data, int count)
 { 
   int ret = 0, i;
   
-  LOG_DEBUG("pilot_send(target=%i, count=%i) called", target, count);
+  LOG_DEBUGALL("pilot_send(target=%i, count=%i) called", target, count);
 
   //spin_lock( &QueueLock );
 
@@ -1893,7 +1893,7 @@ int pilot_try_send(target_t target, const char* data, int count)
   //spin_unlock( &QueueLock );
 
   /* start the spi transmission */
-  LOG_DEBUG("queue_work() for _internals_irq_data_m2r_work()");
+  LOG_DEBUGALL("queue_work() for _internals_irq_data_m2r_work()");
 
   //while(!schedule_work(&_internals_irq_data_m2r_work ));
   //flush_workqueue(comm_wq);
@@ -1903,7 +1903,7 @@ int pilot_try_send(target_t target, const char* data, int count)
   //schedule_work(&_internals_irq_data_m2r_work );
   tasklet_schedule(&_internals_irq_data_m2r_tasklet);	
   
-  LOG_DEBUG("work scheduled successfully");
+  LOG_DEBUGALL("work scheduled successfully");
 
   return ret;
 }

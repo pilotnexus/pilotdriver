@@ -287,7 +287,7 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
 
   slot = target_t_get_module_slot(cmd.target);
 
-  LOG_DEBUG("pilot_callback_cmd_received() called");
+  LOG_DEBUGALL("pilot_callback_cmd_received() called");
 
   switch (cmd.type)
   {
