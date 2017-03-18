@@ -95,7 +95,7 @@ typedef struct {
   volatile int is_variable_updated;
   wait_queue_head_t in_queue;
   wait_queue_head_t out_queue;
-  struct fasync_struct *async_queue; /* asynchronous readers */
+  //struct fasync_struct *async_queue; /* asynchronous readers */
   int length; /*number of bytes to read */
   int read; /* numbers of bytes read */
   uint16_t flags; /* current variable flags */
@@ -620,18 +620,19 @@ static unsigned int pilot_plc_proc_var_poll(struct file *filp, poll_table *wait)
 
   poll_wait(filp, &variable->in_queue, wait);
 
-  if(variable->read != variable->length)
-  {
+  //if(variable->read != variable->length)
+  //{
     LOG_DEBUG("pilot_plc_proc_var_poll() data to read available (%s), bytes read: %i, length: %i", variable->variable, variable->read, variable->length);
-    return POLLPRI;
-  }
-  else
-  {
-    LOG_DEBUG("pilot_plc_proc_var_poll NO data (%s)", variable->variable);
-    return 0;
-  }    
+    return POLLIN | POLLRDNORM;
+  //}
+  //else
+  //{
+  //  LOG_DEBUG("pilot_plc_proc_var_poll NO data (%s)", variable->variable);
+  //  return 0;
+  //}    
 }
 
+/*
 static int pilot_plc_proc_var_fasync(int fd, struct file *filp, int mode)
 {
     pilot_plc_variable_t *variable = (pilot_plc_variable_t *)filp->private_data;
@@ -644,6 +645,7 @@ static int pilot_plc_proc_var_fasync(int fd, struct file *filp, int mode)
     //  return fasync_helper(fd, filp, 1, &variable->async_queue);
     return fasync_helper(fd, filp, mode, &variable->async_queue);
 }
+*/
 
 static int pilot_plc_proc_var_release(struct inode * inode, struct file * file)
 {
@@ -654,7 +656,7 @@ static int pilot_plc_proc_var_release(struct inode * inode, struct file * file)
   variable->is_poll = false;
   variable->is_variable_updated = 1; //return from waiting handlers
 
-  pilot_plc_proc_var_fasync(-1, file, 0);
+  //pilot_plc_proc_var_fasync(-1, file, 0);
 
   LOG_DEBUG("plc variable file %s release\n", variable->variable);
   return 0;
@@ -686,12 +688,14 @@ loff_t pilot_plc_proc_var_llseek(struct file *filp, loff_t off, int whence)
   return -ESPIPE; /* unseekable */
 }
 
+/*
 int pilot_plc_proc_var_fsync(struct file * filp, loff_t start, loff_t end, int datasync)
 {
   pilot_plc_variable_t *variable = (pilot_plc_variable_t *)filp->private_data;
   LOG_DEBUG("pilot_plc_proc_var_fsync of file %s called\n", variable->variable);  
   return 0;
 }
+*/
 
 /* file operations for the /proc/pilot/plc/vars/variables */
 static const struct file_operations proc_plc_variable_fops = {
@@ -701,9 +705,9 @@ static const struct file_operations proc_plc_variable_fops = {
   .read = pilot_plc_proc_var_read,
   .write = pilot_plc_proc_var_write,
   .poll = pilot_plc_proc_var_poll,
-  .llseek = pilot_plc_proc_var_llseek,
-  .fasync = pilot_plc_proc_var_fasync,
-  .fsync = pilot_plc_proc_var_fsync,
+  .llseek = noop_llseek, //pilot_plc_proc_var_llseek,
+  //.fasync = pilot_plc_proc_var_fasync,
+  //.fsync = pilot_plc_proc_var_fsync,
   .release = pilot_plc_proc_var_release
 };
 
@@ -1527,11 +1531,12 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
       LOG_DEBUG("pilot_callback_cmd_received() received pilot_cmd_type_plc_variable_get answer, variable number %i, length %i", _internals.variables[number]->number, _internals.variables[number]->length);
 
       /* finally, awaken any reader */
-      wake_up_interruptible(&_internals.variables[number]->in_queue); /* blocked in read() and select() */
+      //wake_up_interruptible(&_internals.variables[number]->in_queue); /* blocked in read() and select() */
 
+      wake_up_poll(&_internals.variables[number]->in_queue, POLLIN);
       /* and signal asynchronous readers, explained later in Chapter 5 */
-      if (_internals.variables[number]->async_queue && (_internals.variables[number]->flags & PLC_VAR_SUBSCRIBE_BIT));
-        kill_fasync(&_internals.variables[number]->async_queue, SIGIO, POLL_IN);
+      //if (_internals.variables[number]->async_queue && (_internals.variables[number]->flags & PLC_VAR_SUBSCRIBE_BIT));
+      //  kill_fasync(&_internals.variables[number]->async_queue, SIGIO, POLL_IN);
     }
     ret = pilot_cmd_handler_status_handled;
     break;
