@@ -11,7 +11,8 @@
 #include <asm/uaccess.h>      /* copy_to_user() */
 #include <linux/wait.h>
 #include <linux/poll.h>       /* file polling */
-#include <linux/sched.h>      /* TASK_INTERRUPTABLE */
+#include <linux/sched.h>      /* TASK_INTERRUPTIBLE */
+#include <linux/mutex.h>   /* mutex */
 
 MODULE_LICENSE("GPL");
 
@@ -28,6 +29,8 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd);
 
 // *******************************************************************
 // START local members
+
+struct mutex access_lock;
 
 typedef struct {
   u16 min;
@@ -193,48 +196,105 @@ static int get_IEC_size(enum iectypes type)
   switch(type)
   {
     case IEC_BOOL: return sizeof(uint8_t);
+
     case IEC_SINT:return sizeof(int8_t);
     case IEC_INT:return sizeof(int16_t);
     case IEC_DINT:return sizeof(int32_t);
     case IEC_LINT:return sizeof(int64_t);
+
     case IEC_USINT:return sizeof(uint8_t);
     case IEC_UINT:return sizeof(uint16_t);
     case IEC_UDINT:return sizeof(uint32_t);
     case IEC_ULINT: return sizeof(uint64_t);
+
     case IEC_BYTE:return sizeof(uint8_t);
     case IEC_WORD:return sizeof(uint16_t);
     case IEC_DWORD:return sizeof(uint32_t);
-    case IEC_LWORD:return sizeof(uint8_t);
-    case IEC_REAL:return sizeof(float);
-    case IEC_LREAL:return sizeof(double);
+    case IEC_LWORD:return sizeof(uint64_t);
+
+    //case IEC_REAL:return sizeof(float);
+    //case IEC_LREAL:return sizeof(double);
     default: return 0;
   }
 }
 
 static int raw_IEC_to_string(enum iectypes type, char *buffer_in, int buffer_in_length, char *buffer_out, int buffer_out_length)
 {
-
   switch(type)
   {
-    case IEC_BOOL: return snprintf(buffer_out, buffer_out_length, "%i", *((uint8_t *)buffer_in));
-    case IEC_SINT:
-    case IEC_INT:
-    case IEC_DINT:
-    case IEC_LINT:
-    case IEC_USINT:
-    case IEC_UINT:
-    case IEC_UDINT:
-    case IEC_ULINT: 
-    case IEC_BYTE:
-    case IEC_WORD:
-    case IEC_DWORD:
-    case IEC_LWORD:
-    case IEC_REAL:
-    case IEC_LREAL:
+    case IEC_BOOL: return snprintf(buffer_out, buffer_out_length, "%u", *((uint8_t *)buffer_in));
+
+    case IEC_SINT: return snprintf(buffer_out, buffer_out_length, "%i", *((int8_t *)buffer_in));
+    case IEC_INT: return snprintf(buffer_out, buffer_out_length, "%i", *((int16_t *)buffer_in));
+    case IEC_DINT: return snprintf(buffer_out, buffer_out_length, "%i", *((int32_t *)buffer_in));
+    case IEC_LINT: return snprintf(buffer_out, buffer_out_length, "%lli", *((int64_t *)buffer_in));
+
+    case IEC_USINT: return snprintf(buffer_out, buffer_out_length, "%u", *((uint8_t *)buffer_in));
+    case IEC_UINT: return snprintf(buffer_out, buffer_out_length, "%u", *((uint16_t *)buffer_in));
+    case IEC_UDINT: return snprintf(buffer_out, buffer_out_length, "%u", *((uint32_t *)buffer_in));
+    case IEC_ULINT: return snprintf(buffer_out, buffer_out_length, "%llu", *((uint64_t *)buffer_in));
+
+    case IEC_BYTE: return snprintf(buffer_out, buffer_out_length, "%u", *((uint8_t *)buffer_in));
+    case IEC_WORD: return snprintf(buffer_out, buffer_out_length, "%u", *((uint16_t *)buffer_in));
+    case IEC_DWORD: return snprintf(buffer_out, buffer_out_length, "%u", *((uint32_t *)buffer_in));
+    case IEC_LWORD: return snprintf(buffer_out, buffer_out_length, "%llu", *((uint64_t *)buffer_in));
+
+    //case IEC_REAL: return snprintf(buffer_out, buffer_out_length, "%f", *((float *)buffer_in));
+    //case IEC_LREAL: return snprintf(buffer_out, buffer_out_length, "%lf", *((double *)buffer_in));
     default: return 0;
   }
   return 0;
 }
+
+/*
+
+int __must_check kstrtoull_from_user(const char __user *s, size_t count, unsigned int base, unsigned long long *res);
+int __must_check kstrtoll_from_user(const char __user *s, size_t count, unsigned int base, long long *res);
+int __must_check kstrtoul_from_user(const char __user *s, size_t count, unsigned int base, unsigned long *res);
+int __must_check kstrtol_from_user(const char __user *s, size_t count, unsigned int base, long *res);
+int __must_check kstrtouint_from_user(const char __user *s, size_t count, unsigned int base, unsigned int *res);
+int __must_check kstrtoint_from_user(const char __user *s, size_t count, unsigned int base, int *res);
+int __must_check kstrtou16_from_user(const char __user *s, size_t count, unsigned int base, u16 *res);
+int __must_check kstrtos16_from_user(const char __user *s, size_t count, unsigned int base, s16 *res);
+int __must_check kstrtou8_from_user(const char __user *s, size_t count, unsigned int base, u8 *res);
+int __must_check kstrtos8_from_user(const char __user *s, size_t count, unsigned int base, s8 *res);
+int __must_check kstrtobool_from_user(const char __user *s, size_t count, bool *res);
+*/
+
+static int string_to_IEC_from_user(enum iectypes type, const char *buffer_in, int buffer_in_length, char *buffer_out, int buffer_out_length)
+{
+  unsigned int base = 10;
+  int start_index = 0;
+  if (buffer_in_length > 2 && buffer_in[0] == '0' && buffer_in[1] == 'x')
+  {
+    base = 16;
+    start_index = 2;
+  }
+
+  memset(buffer_out, 0, buffer_out_length);
+
+  switch(type)
+  {
+    case IEC_BOOL: return kstrtobool_from_user(&buffer_in[start_index], buffer_in_length, (bool *)buffer_out);
+
+    case IEC_SINT: return kstrtos8_from_user(&buffer_in[start_index], buffer_in_length, base, (s8 *)buffer_out);
+    case IEC_INT: return kstrtos16_from_user(&buffer_in[start_index], buffer_in_length, base, (s16 *)buffer_out);
+    case IEC_DINT: return kstrtoint_from_user(&buffer_in[start_index], buffer_in_length, base, (int *)buffer_out);
+    case IEC_LINT: return kstrtoll_from_user(&buffer_in[start_index], buffer_in_length, base, (long long *)buffer_out);
+
+    case IEC_BYTE:
+    case IEC_USINT: return kstrtou8_from_user(&buffer_in[start_index], buffer_in_length, base, (u8 *)buffer_out);
+    case IEC_WORD:
+    case IEC_UINT: return kstrtou16_from_user(&buffer_in[start_index], buffer_in_length, base, (u16 *)buffer_out);
+    case IEC_DWORD:
+    case IEC_UDINT: return kstrtouint_from_user(&buffer_in[start_index], buffer_in_length, base, (unsigned int *)buffer_out);
+    case IEC_LWORD:
+    case IEC_ULINT: return kstrtoull_from_user(&buffer_in[start_index], buffer_in_length, base, (unsigned long long *)buffer_out);
+    default: return -EINVAL;
+  }
+
+}
+
 
 static void pilot_plc_send_set_variable_cmd(uint16_t varnumber, char *value)
 {
@@ -477,14 +537,22 @@ static int pilot_plc_proc_var_read(struct file *filp, char __user *buf, size_t c
 
   pilot_plc_variable_t *variable = (pilot_plc_variable_t *)filp->private_data;
 
+  if (mutex_lock_interruptible(&access_lock))
+    return -ERESTARTSYS;
+
   if (!variable->is_poll)
   {
     if (variable->read == -1) //is there a nicer way??
+    {
+      mutex_unlock(&access_lock);
       return 0;
+    }
     pilot_plc_send_get_variable_cmd(((uint16_t)variable->number) & 0xFFF);
   }
   else
     variable->read = variable->length; //poll mode, force waiting
+
+  mutex_unlock(&access_lock);
 
   LOG_DEBUG("pilot_plc_proc_var_read() called\n");
   if (variable)
@@ -507,10 +575,16 @@ static int pilot_plc_proc_var_read(struct file *filp, char __user *buf, size_t c
     if (copy_to_user(buf, internal_buffer, readlength)) 
       return -EFAULT;
 
-    ret = variable->read = variable->length;
-    *ppos += ret;
+    if (mutex_lock_interruptible(&access_lock))
+      return -ERESTARTSYS;
+
+    ret = readlength;
+    *ppos += readlength;
+    variable->read = variable->length;
     if (!variable->is_poll) //is there a nicer way??
       variable->read = -1;
+
+    mutex_unlock(&access_lock);
 
     LOG_DEBUG("pilot_plc_proc_var_read() returns with %i bytes read", ret);
   }
@@ -526,12 +600,17 @@ static int pilot_plc_proc_var_open(struct inode *inode, struct file *file)
   if (variable->is_open)
     return -EBUSY; /* already open */
 
+  if (mutex_lock_interruptible(&access_lock))
+    return -ERESTARTSYS;
+
   variable->length = 0; //indicate to aquire read
   variable->read = 0; 
   variable->is_open = true;
   variable->is_poll = false;
   variable->is_variable_updated = 0;
   file->private_data = variable;
+
+  mutex_unlock(&access_lock);
   
   LOG_DEBUG("plc variable file %s open, flags=%X\n", variable->variable, file->f_flags);
   return 0;
@@ -539,7 +618,6 @@ static int pilot_plc_proc_var_open(struct inode *inode, struct file *file)
 
 static int pilot_plc_proc_var_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
-    int new_value;
     int ret = -EINVAL;
     bool use_set_variable = true;
     uint16_t flag = 0;
@@ -567,15 +645,12 @@ static int pilot_plc_proc_var_write(struct file *file, const char __user *buf, s
   {
     /* try to get an int value from the user */
       //change to copy_from_user(msg,buf,count) for more generic use
-    if (kstrtoint_from_user(&buf[index], count-index, 10, &new_value) != SUCCESS)
-      ret = -EINVAL; /* return an error if the conversion fails */
-    else
+
+    if (string_to_IEC_from_user(variable->iectype, &buf[index], count-index, value, 8) != -EINVAL)
     {
       /* send a plc state set cmd to the pilot */ 
-      LOG_DEBUG("writing variable %i to plc. new value %i\n", variable->number, new_value);
+      //LOG_DEBUG("writing variable %i to plc. new value %i\n", variable->number, new_value);
     
-      memcpy(value, &new_value, sizeof(int));
-
       //TODO - dangerous, needs Lock - receiver could set it to 1 right before that and than the wait_event misses subscribed event
       variable->is_variable_updated = 0;
 
@@ -590,6 +665,10 @@ static int pilot_plc_proc_var_write(struct file *file, const char __user *buf, s
         ret = -EINVAL;
       else
         ret = count;
+    }
+    else
+    {
+      LOG_DEBUG("error parsing input\n");      
     }
   }
   else
@@ -650,12 +729,17 @@ static int pilot_plc_proc_var_fasync(int fd, struct file *filp, int mode)
 static int pilot_plc_proc_var_release(struct inode * inode, struct file * file)
 {
   pilot_plc_variable_t *variable = (pilot_plc_variable_t *)PDE_DATA(file->f_inode);
+
+  if (mutex_lock_interruptible(&access_lock))
+    LOG_DEBUG("mutex lock cancelled");
+
   variable->is_open = false;
   variable->length = 0; //no data to read
   variable->flags = 0; //reset flags
   variable->is_poll = false;
   variable->is_variable_updated = 1; //return from waiting handlers
 
+  mutex_unlock(&access_lock);
   //pilot_plc_proc_var_fasync(-1, file, 0);
 
   LOG_DEBUG("plc variable file %s release\n", variable->variable);
@@ -1519,14 +1603,17 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
     number = *((uint16_t *)&cmd.data[8]) & 0xFFF;
     if (number < _internals.variables_count)
     {
-      /* TODO make atomic: needs lock before modifying data */
+       if (mutex_lock_interruptible(&access_lock))
+        return -ERESTARTSYS;
+
       _internals.variables[number]->flags = *((uint16_t *)&cmd.data[8]) & 0xF000;
 
       memcpy(_internals.variables[number]->value, cmd.data, 8); //actual var length...
       _internals.variables[number]->read = 0;
       _internals.variables[number]->length = get_IEC_size(_internals.variables[number]->iectype);
       _internals.variables[number]->is_variable_updated = 1;
-      /* end TODO make atomic */
+
+      mutex_unlock(&access_lock);
 
       LOG_DEBUG("pilot_callback_cmd_received() received pilot_cmd_type_plc_variable_get answer, variable number %i, length %i", _internals.variables[number]->number, _internals.variables[number]->length);
 
@@ -1639,6 +1726,8 @@ static int __init pilot_plc_init()
   {
     LOG(KERN_ERR, "pilot_register_cmd_handler() failed!");
   }
+
+  mutex_init(&access_lock);
 
   return ret;
 }
