@@ -42,6 +42,8 @@
 #define pilot_CMD_TYPE_PLC_VARIABLES_GET "plc variables get"
 #define pilot_CMD_TYPE_PLC_VARIABLES_SET "plc variables set"
 #define pilot_CMD_TYPE_TEST_RUN "test run"
+#define pilot_CMD_TYPE_PLC_VARIABLE_GET "plc single variable get"
+#define pilot_CMD_TYPE_PLC_VARIABLE_SET "plc single variable set"
 
 char* pilot_cmd_type_to_name(pilot_cmd_type_t type)
 {
@@ -89,6 +91,9 @@ char* pilot_cmd_type_to_name(pilot_cmd_type_t type)
     case pilot_cmd_type_plc_variables_get: return pilot_CMD_TYPE_PLC_VARIABLES_GET;
     case pilot_cmd_type_plc_variables_set: return pilot_CMD_TYPE_PLC_VARIABLES_SET;
     case pilot_cmd_type_test_run: return pilot_CMD_TYPE_TEST_RUN;
+    case pilot_cmd_type_plc_variable_get: return pilot_CMD_TYPE_PLC_VARIABLE_GET;
+    case pilot_cmd_type_plc_variable_set: return pilot_CMD_TYPE_PLC_VARIABLE_SET;
+
     default: return pilot_CMD_TYPE_UNKNOWN;
   }
 }

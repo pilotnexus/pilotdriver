@@ -88,12 +88,15 @@ typedef enum
 
 } target_t;
 
-#define pilot_cmd_t_data_size 10
+#define pilot_cmd_t_data_size 256
+#define pilot_cmd_t_size_without_data 8
 
 /* rpi command struct */
 typedef struct {
-  char target; /* target of the command */
-  char type;   /* type of the command */
+  unsigned char target; /* target of the command */
+  unsigned char type;   /* type of the command */
+  unsigned char length; /* command length */
+  unsigned char reserved; /* reserved byte */
   char data[pilot_cmd_t_data_size]; /* command data, value depends on type */
   uint32_t crc;
 } pilot_cmd_t;
@@ -101,7 +104,8 @@ typedef struct {
 typedef enum {
   pilot_current_cmd_index_target     = 0,
   pilot_current_cmd_index_type       = 1,
-  pilot_current_cmd_index_data_begin = 2
+  pilot_current_cmd_index_length     = 2,
+  pilot_current_cmd_index_data_begin = 4
 } pilot_current_cmd_index_t;
 
 /* struct that holds the current rpi command that is being received */

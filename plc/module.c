@@ -537,22 +537,16 @@ static int pilot_plc_proc_var_read(struct file *filp, char __user *buf, size_t c
 
   pilot_plc_variable_t *variable = (pilot_plc_variable_t *)filp->private_data;
 
-  if (mutex_lock_interruptible(&access_lock))
-    return -ERESTARTSYS;
-
   if (!variable->is_poll)
   {
     if (variable->read == -1) //is there a nicer way??
     {
-      mutex_unlock(&access_lock);
       return 0;
     }
     pilot_plc_send_get_variable_cmd(((uint16_t)variable->number) & 0xFFF);
   }
   else
     variable->read = variable->length; //poll mode, force waiting
-
-  mutex_unlock(&access_lock);
 
   LOG_DEBUG("pilot_plc_proc_var_read() called\n");
   if (variable)

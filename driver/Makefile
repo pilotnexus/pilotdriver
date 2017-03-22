@@ -22,13 +22,14 @@ mod_$(1):
 ifeq ($(DEBUG), 1)
 	@echo "BUILDING DEBUG VERSION"
 	@echo "#define DEBUG" > $(SRC)/debug.h
+else ifeq ($(DEBUG), 2)
+	@echo "BUILDING DEBUG LEVEL 2 VERSION"
+	@echo "#define DEBUG\n#define DEBUGALL" > $(SRC)/debug.h
 else
 	@echo "/* #define DEBUG */" > $(SRC)/debug.h
 endif
-	
 	make -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(SRC) clean
 	make ARCH=arm CROSS_COMPILE=$(PREFIX) -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(SRC) modules
-	
 endef
 
 $(foreach mod,$(KERNEL_VER_LIST),$(eval $(call mod_template,$(mod))))
