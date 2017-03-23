@@ -84,6 +84,7 @@ typedef struct
   driver_t drivers[DRIVERS_COUNT]; /* registered drivers */
   module_t modules[MODULES_COUNT]; /* configured modules */
   queue_t TxQueue;                 /* data to be send to the microcontroller as commands */
+  queue_t RxQueue;                 /* received data */
 
   spinlock_t       list_cmd_handler_lock; /* a spinlock to synchronize list_cmd_handler access */
   struct list_head list_cmd_handler;      /* the head of the list of registered command handlers - a standalone list_head structure */

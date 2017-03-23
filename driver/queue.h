@@ -3,7 +3,7 @@
 
 #include <linux/kernel.h>
 
-#define QUEUE_SIZE 256
+#define QUEUE_SIZE 2048
 
 typedef struct
 {

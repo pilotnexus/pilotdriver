@@ -222,22 +222,22 @@ static int raw_IEC_to_string(enum iectypes type, char *buffer_in, int buffer_in_
 {
   switch(type)
   {
-    case IEC_BOOL: return snprintf(buffer_out, buffer_out_length, "%u", *((uint8_t *)buffer_in));
+    case IEC_BOOL: return snprintf(buffer_out, buffer_out_length, "%u\n", *((uint8_t *)buffer_in));
 
-    case IEC_SINT: return snprintf(buffer_out, buffer_out_length, "%i", *((int8_t *)buffer_in));
-    case IEC_INT: return snprintf(buffer_out, buffer_out_length, "%i", *((int16_t *)buffer_in));
-    case IEC_DINT: return snprintf(buffer_out, buffer_out_length, "%i", *((int32_t *)buffer_in));
-    case IEC_LINT: return snprintf(buffer_out, buffer_out_length, "%lli", *((int64_t *)buffer_in));
+    case IEC_SINT: return snprintf(buffer_out, buffer_out_length, "%i\n", *((int8_t *)buffer_in));
+    case IEC_INT: return snprintf(buffer_out, buffer_out_length, "%i\n", *((int16_t *)buffer_in));
+    case IEC_DINT: return snprintf(buffer_out, buffer_out_length, "%i\n", *((int32_t *)buffer_in));
+    case IEC_LINT: return snprintf(buffer_out, buffer_out_length, "%lli\n", *((int64_t *)buffer_in));
 
-    case IEC_USINT: return snprintf(buffer_out, buffer_out_length, "%u", *((uint8_t *)buffer_in));
-    case IEC_UINT: return snprintf(buffer_out, buffer_out_length, "%u", *((uint16_t *)buffer_in));
-    case IEC_UDINT: return snprintf(buffer_out, buffer_out_length, "%u", *((uint32_t *)buffer_in));
-    case IEC_ULINT: return snprintf(buffer_out, buffer_out_length, "%llu", *((uint64_t *)buffer_in));
+    case IEC_USINT: return snprintf(buffer_out, buffer_out_length, "%u\n", *((uint8_t *)buffer_in));
+    case IEC_UINT: return snprintf(buffer_out, buffer_out_length, "%u\n", *((uint16_t *)buffer_in));
+    case IEC_UDINT: return snprintf(buffer_out, buffer_out_length, "%u\n", *((uint32_t *)buffer_in));
+    case IEC_ULINT: return snprintf(buffer_out, buffer_out_length, "%llu\n", *((uint64_t *)buffer_in));
 
-    case IEC_BYTE: return snprintf(buffer_out, buffer_out_length, "%u", *((uint8_t *)buffer_in));
-    case IEC_WORD: return snprintf(buffer_out, buffer_out_length, "%u", *((uint16_t *)buffer_in));
-    case IEC_DWORD: return snprintf(buffer_out, buffer_out_length, "%u", *((uint32_t *)buffer_in));
-    case IEC_LWORD: return snprintf(buffer_out, buffer_out_length, "%llu", *((uint64_t *)buffer_in));
+    case IEC_BYTE: return snprintf(buffer_out, buffer_out_length, "%u\n", *((uint8_t *)buffer_in));
+    case IEC_WORD: return snprintf(buffer_out, buffer_out_length, "%u\n", *((uint16_t *)buffer_in));
+    case IEC_DWORD: return snprintf(buffer_out, buffer_out_length, "%u\n", *((uint32_t *)buffer_in));
+    case IEC_LWORD: return snprintf(buffer_out, buffer_out_length, "%llu\n", *((uint64_t *)buffer_in));
 
     //case IEC_REAL: return snprintf(buffer_out, buffer_out_length, "%f", *((float *)buffer_in));
     //case IEC_LREAL: return snprintf(buffer_out, buffer_out_length, "%lf", *((double *)buffer_in));
@@ -537,16 +537,25 @@ static int pilot_plc_proc_var_read(struct file *filp, char __user *buf, size_t c
 
   pilot_plc_variable_t *variable = (pilot_plc_variable_t *)filp->private_data;
 
+  if (mutex_lock_interruptible(&access_lock))
+  {
+    LOG_DEBUG("ERROR LOCKING MUTEX in pilot_plc_proc_var_read() at beginning");
+    return -ERESTARTSYS;
+  }
+
   if (!variable->is_poll)
   {
     if (variable->read == -1) //is there a nicer way??
     {
+      mutex_unlock(&access_lock);
       return 0;
     }
     pilot_plc_send_get_variable_cmd(((uint16_t)variable->number) & 0xFFF);
   }
   else
     variable->read = variable->length; //poll mode, force waiting
+
+  mutex_unlock(&access_lock);
 
   LOG_DEBUG("pilot_plc_proc_var_read() called\n");
   if (variable)
@@ -563,14 +572,21 @@ static int pilot_plc_proc_var_read(struct file *filp, char __user *buf, size_t c
       return -ERESTARTSYS; /* signal: tell the fs layer to handle it */
     /* otherwise loop, but first reacquire the lock */
     }
+    LOG_DEBUG("pilot_plc_proc_var_read() received value.");
 
     readlength = raw_IEC_to_string(variable->iectype, variable->value, get_IEC_size(variable->iectype), internal_buffer, MAX_VAR_LENGTH);
 
-    if (copy_to_user(buf, internal_buffer, readlength)) 
+    if (copy_to_user(buf, internal_buffer, readlength))
+    { 
+      LOG_DEBUG("pilot_plc_proc_var_read() ERROR copying value to user. length to read: %i, available output buffer: %i", readlength, count);
       return -EFAULT;
+    }
 
     if (mutex_lock_interruptible(&access_lock))
+    {
+      LOG_DEBUG("ERROR LOCKING MUTEX in pilot_plc_proc_var_read()");
       return -ERESTARTSYS;
+    }
 
     ret = readlength;
     *ppos += readlength;
