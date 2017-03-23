@@ -53,8 +53,8 @@ typedef struct {
 
 /* holds statistical info which can be read using /proc/pilot/stats */
 typedef struct {
-  unsigned int recv_byte_count[MODULE_PORT_COUNT * MODULES_COUNT + 1];
-  unsigned int sent_byte_count[MODULE_PORT_COUNT * MODULES_COUNT + 1];
+  unsigned int recv_byte_count[256];
+  unsigned int sent_byte_count[256];
   unsigned int recv_cmd_count;
   unsigned int sent_cmd_count;
   unsigned int recv_cmd_type_count[MAX_CMD_TYPE];
@@ -100,8 +100,6 @@ typedef struct
   struct proc_dir_entry* proc_pilot_dir; /* base proc directory '/proc/pilot' */
   struct proc_dir_entry* proc_pilot_modules_dir[MODULES_COUNT]; /* module directories '/proc/pilot/moduleX' */
   struct proc_dir_entry* proc_pilot_modules_eeprom_dir[MODULES_COUNT]; /* module directories '/proc/pilot/moduleX/eeprom' */
-
-  unsigned long current_cmd_timeout; /* the timestamp when the current cmd will time out */
 
   int spiclk; /* holds the spiclk divisor 250 / spiclk = clock speed in MHz */
 

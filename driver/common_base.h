@@ -12,7 +12,7 @@
 /* the number of ports for each module */
 #define MODULE_PORT_COUNT 2
 
-/* we're using byte-wise SPI communication */
+/* we're using 16 bit SPI communication */
 typedef u16 spidata_t;
 
 /* stm commands */
@@ -68,7 +68,7 @@ typedef enum
    target_t is a combination of module_slot_t and module_port_t */
 typedef enum
 {
-  target_base          = 0x00, /* the target is the base controller itself, either the rpi in stm->rpi or the stm in rpi->stm communication */
+  target_invalid       = 0x00, /* there is no valid target, the following data should be discarded */
 
   target_module1_port1 = 0x01, /* the target is the first port of the Module in the slot 1  */
   target_module1_port2 = 0x02, /* the target is the second port of the Module in the slot 1 */
@@ -82,13 +82,19 @@ typedef enum
   target_module4_port1 = 0x07, /* the target is the first port of the Module in the slot 4  */
   target_module4_port2 = 0x08, /* the target is the second port of the Module in the slot 4 */
 
-  target_plc_read      = 0xFD, /* the target is the soft plc read */
-  target_plc_write     = 0xFE, /* the target is the soft plc write */
-  target_invalid       = 0xFF  /* there is no valid target, the following data should be discarded */
+  target_plc_read      = 0xCD, /* the target is the soft plc read */
+  target_plc_write     = 0xCE, /* the target is the soft plc write */
+
+  target_base          = 0xF0,
+  target_base_type     = 0xF1,
+  target_base_length   = 0xF2,
+  target_base_reserved = 0xF3,
+  target_base_crc      = 0xFE,
+  target_base_data     = 0xFF
 
 } target_t;
 
-#define pilot_cmd_t_data_size 256
+#define pilot_cmd_t_data_size 512
 #define pilot_cmd_t_size_without_data 8
 
 /* rpi command struct */
@@ -112,6 +118,8 @@ typedef enum {
 typedef struct {
   pilot_cmd_t cmd;                 /* the command we're receiving from the rpi */
   pilot_current_cmd_index_t index; /* current index of the fillstatus of this command */
+  uint32_t length;
+  uint8_t cmd_completion;
 } pilot_current_cmd_t;
 
 /* specifies the slot of the module */

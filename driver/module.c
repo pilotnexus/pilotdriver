@@ -682,72 +682,86 @@ static void pilot_spi0_handle_received_cmd(pilot_cmd_t cmd)
 }
 
 /* description: this function handles data received from the stm that is targetted at the base driver */
-static void pilot_spi0_handle_received_cmd_byte(char data)
+static void pilot_spi0_handle_received_cmd_byte(target_t target, uint8_t data)
 {
-  int i;
-  const unsigned long timeout = HZ; /* timeout in 1 sec */
+  int i, crcindex;
+  uint8_t length_parity;
 
-  /* if it's a new cmd, then start the timeout */
-  if (_internals.current_cmd.index == pilot_current_cmd_index_target)
-    _internals.current_cmd_timeout = jiffies + timeout;
-
-  /* if the timeout elapsed... */
-  if (time_after(jiffies, _internals.current_cmd_timeout))
+  if (target == target_base)
   {
-    LOG_INFO("previous cmd timed out! was: index=%X, target=%X, type=%X", _internals.current_cmd.index, _internals.current_cmd.cmd.target, _internals.current_cmd.cmd.type);
-
     /* ...reset the cmd */
     _internals.current_cmd.index = pilot_current_cmd_index_target;
-    /* ...reset the timeout */
-    _internals.current_cmd_timeout = jiffies + timeout;
+    _internals.current_cmd.cmd_completion = 0x0;
+    LOG_DEBUGALL("pilot_spi0_handle_received_cmd_byte MSG START (data=%i), current_cmd.index=%i", data, _internals.current_cmd.index);
   }
 
-  LOG_DEBUGALL("pilot_spi0_handle_received_cmd_byte(data=%i), current_cmd.index=%i", data, _internals.current_cmd.index);
+  if (target - target_base == _internals.current_cmd.index && _internals.current_cmd.index < pilot_current_cmd_index_data_begin)
+  { //header
+    switch((uint8_t)target)
+    {
+      case (uint8_t)target_base:_internals.current_cmd.cmd.target = (target_t)data; _internals.current_cmd.cmd_completion |= 0x1; break;
+      case (uint8_t)target_base_type: _internals.current_cmd.cmd.type = (pilot_cmd_type_t)data; _internals.current_cmd.cmd_completion |= 0x2; break;
+      case (uint8_t)target_base_length: 
+        //calculate parity
+        length_parity = data; 
+        length_parity ^= length_parity >> 4;
+        length_parity ^= length_parity >> 2;
+        length_parity ^= length_parity >> 1;
+        //if ( (data & 0x80) == ((length_parity & 1) !=0 ? 0 : 0x80))
+        {
+          _internals.current_cmd.length = (unsigned char)(data & 0x7F) << 2; 
+          _internals.current_cmd.cmd.length = data;
+          _internals.current_cmd.cmd_completion |= 0x4; 
+        }
+        LOG_DEBUG("pilot_received_cmd_byte() length: %i (0x%x)", _internals.current_cmd.length, _internals.current_cmd.cmd.length);
 
-  /* add the data to the current rpcp command */
-  switch (_internals.current_cmd.index)
+      break;
+      case (uint8_t)target_base_reserved: _internals.current_cmd.cmd.reserved = data; _internals.current_cmd.cmd_completion |= 0x8; break;
+      default:
+        //general error in transmission structure, reset
+        _internals.current_cmd.cmd_completion = 0x0;
+      break;
+    }
+  }
+  else if (target == target_base_data && 
+    _internals.current_cmd.index >= pilot_current_cmd_index_data_begin && 
+    _internals.current_cmd.cmd_completion == 0xF )
+  { //header done, data block
+    LOG_DEBUG("pilot_received_cmd_byte() header complete");
+
+    _internals.current_cmd.cmd.data[_internals.current_cmd.index-pilot_current_cmd_index_data_begin] = data;
+  }
+  else if (target == target_base_crc)
+  { //crc check
+    crcindex = _internals.current_cmd.index - pilot_current_cmd_index_data_begin - _internals.current_cmd.length;
+    ((uint8_t *)&_internals.current_cmd.cmd.crc)[crcindex] = data;
+    _internals.current_cmd.cmd_completion |= (0x10 << crcindex);
+    LOG_DEBUG("pilot_received_cmd_byte() CRC byte");
+  }
+  else
   {
-    /* the first byte of a new command is the target_t */
-    case pilot_current_cmd_index_target:
-      _internals.current_cmd.cmd.target = (target_t)data;
-      break;
-
-    /* the second byte of a command is the cmd_type */
-    case pilot_current_cmd_index_type:
-      _internals.current_cmd.cmd.type = (pilot_cmd_type_t)data;
-      break;
-    case pilot_current_cmd_index_length:
-      _internals.current_cmd.cmd.length = (unsigned char)data;
-    break;
-    /* the following bytes of a command are the data bytes */
-    default:
-      i = _internals.current_cmd.index - pilot_current_cmd_index_data_begin;
-      if (i >= 0)
-      {
-        if (i < (_internals.current_cmd.cmd.length))
-          _internals.current_cmd.cmd.data[i] = data;
-        else if (i < (_internals.current_cmd.cmd.length + sizeof(uint32_t)))
-          ((unsigned char *)&_internals.current_cmd.cmd.crc)[i-_internals.current_cmd.cmd.length] = data; //set crc
-      }
-      break;
+    //general error in transmission structure, reset
+    _internals.current_cmd.cmd_completion = 0x0;
   }
 
   /* increment the index */
   _internals.current_cmd.index++;
 
   /* is the received command completed? */
-  if (_internals.current_cmd.index >= pilot_cmd_t_size_without_data && _internals.current_cmd.index >= _internals.current_cmd.cmd.length + pilot_cmd_t_size_without_data)
+  if ( (_internals.current_cmd.cmd_completion == 0xFF) && 
+    (_internals.current_cmd.index >= pilot_cmd_t_size_without_data) && 
+    (_internals.current_cmd.index >= (_internals.current_cmd.length + pilot_cmd_t_size_without_data)) )
   {
     //int32_t crc_check = crcFast((char *) &_internals.current_cmd.cmd, sizeof(pilot_cmd_t) - (sizeof(crc)));
-    int32_t crc_check = crc((char *) &_internals.current_cmd.cmd, pilot_current_cmd_index_data_begin + _internals.current_cmd.cmd.length);
+    int32_t crc_check = crc((char *) &_internals.current_cmd.cmd, pilot_current_cmd_index_data_begin + _internals.current_cmd.length);
 
     //LOG_DEBUG("cmd completed - target: %i, type: %i", _internals.current_cmd.cmd.target, _internals.current_cmd.cmd.type);
-    LOG_DEBUG("pilot_received_cmd: target: %i, type: %i, data length: %u (CRC received: %X, own calculated CRC: %X)",(int) _internals.current_cmd.cmd.target,(int) _internals.current_cmd.cmd.type, _internals.current_cmd.cmd.length,_internals.current_cmd.cmd.crc, crc_check);
+    LOG_DEBUG("pilot_received_cmd: target: %i, type: %i, data length: %u (CRC received: %X, own calculated CRC: %X)",(int) _internals.current_cmd.cmd.target,(int) _internals.current_cmd.cmd.type, _internals.current_cmd.length,_internals.current_cmd.cmd.crc, crc_check);
 
     #ifdef DEBUG
       printk("     data: '");
 
-      for(i=0;i<_internals.current_cmd.cmd.length;i++)
+      for(i=0;i<_internals.current_cmd.length;i++)
         printk("%x ", _internals.current_cmd.cmd.data[i]);
 
       printk("'\n");
@@ -766,6 +780,7 @@ static void pilot_spi0_handle_received_cmd_byte(char data)
       memcpy(&_internals.last_recv_cmd, &_internals.current_cmd.cmd, sizeof(pilot_cmd_t));
 
       /* handle the command by copy */
+      _internals.current_cmd.cmd.length = _internals.current_cmd.length;
       pilot_spi0_handle_received_cmd(_internals.current_cmd.cmd);
     }
     else
@@ -789,9 +804,9 @@ static void rpc_spi0_handle_received_data(spidata_t miso)
   target = (miso >> 8);
   data   = (miso & 0xFF);
 
-  if (target == target_base)
+  if (target >= target_base)
   {
-    pilot_spi0_handle_received_cmd_byte(data);
+    pilot_spi0_handle_received_cmd_byte(target, data);
     _internals.stats.recv_byte_count[target]++; /* update the stats */
   }
   else if (target <= target_module4_port2)
@@ -1943,12 +1958,6 @@ int pilot_try_send(target_t target, const char* data, int count)
   /* start the spi transmission */
   LOG_DEBUGALL("queue_work() for _internals_irq_data_m2r_work()");
 
-  //while(!schedule_work(&_internals_irq_data_m2r_work ));
-  //flush_workqueue(comm_wq);
-  //LOG_DEBUG("queue_work() has no pending tasks, start queue_work()");
-
-  //queue_work(comm_wq, &_internals_irq_data_m2r_work );
-  //schedule_work(&_internals_irq_data_m2r_work );
   tasklet_schedule(&_internals_irq_data_m2r_tasklet);	
   
   LOG_DEBUGALL("work scheduled successfully");
@@ -1963,18 +1972,55 @@ void pilot_send(target_t target, const char* data, int count)
     cpu_relax();
 }
 
+#define MSG_LEN(x) (0x7F & (x >> 2))
 /* sends the supplied command to the stm by calling pilot_send() internally */
 void pilot_send_cmd(pilot_cmd_t* cmd)
 {
-  cmd->length = 12; //TODO: currently fixed, needs change
+  int i;
+  int length = 12;//TODO: currently fixed, needs changes;
+  uint8_t length_parity;
+  
+  cmd->length = MSG_LEN(length);
+  length_parity = cmd->length;
 
-  cmd->crc = crc((char *) cmd, pilot_cmd_t_size_without_data + cmd->length - (sizeof(uint32_t)));
+  //calculate parity
+  length_parity ^= length_parity >> 4;
+  length_parity ^= length_parity >> 2;
+  length_parity ^= length_parity >> 1;
+  cmd->length = cmd->length | ((length_parity & 1) !=0 ? 0 : 0x80);
 
-  LOG_DEBUG("pilot_send_cmd: target: %x, type: %x, data: %x %x %x %x %x %x %x %x %x %x (crc: %X)",(int) cmd->target,(int) cmd->type, cmd->data[0], cmd->data[1], cmd->data[2], cmd->data[3], cmd->data[4], cmd->data[5], cmd->data[6], cmd->data[7], cmd->data[8], cmd->data[9], cmd->crc);
+  cmd->crc = crc((char *) cmd, pilot_current_cmd_index_data_begin + length );
 
-  //todo - needs to be atomic
-  pilot_send(target_base, (char *)cmd, pilot_cmd_t_size_without_data + cmd->length - sizeof(uint32_t));
-  pilot_send(target_base, (char *)&cmd->crc, sizeof(uint32_t));
+  LOG_DEBUG("pilot_send_cmd: target: %x, type: %x, length: %i (0x%x), crc: %X",(int) cmd->target,(int) cmd->type, length, cmd->length, cmd->crc);
+
+  #ifdef DEBUG
+    printk("     data: '");
+
+    for(i=0;i< length;i++)
+      printk("%x ", cmd->data[i]);
+
+    printk("'\n");
+  #endif
+ //spin_lock( &QueueLock );
+
+  //enqueue first header byte  
+  queue_enqueue( &_internals.TxQueue, ( (int)target_base << 8 | cmd->target) );
+  //enqueue second header byte  
+  queue_enqueue( &_internals.TxQueue, ( (int)target_base_type << 8 | cmd->type) );
+  //enqueue third header byte  
+  queue_enqueue( &_internals.TxQueue, ( (int)target_base_length << 8 | cmd->length) );
+  //enqueue fourth header byte  
+  queue_enqueue( &_internals.TxQueue, ( (int)target_base_reserved << 8 | cmd->reserved) );
+
+  for (i = 0; i < length; i++) //length *4 bytes
+    queue_enqueue( &_internals.TxQueue, ( (int)target_base_data << 8 | cmd->data[i] ) );
+
+  for (i = 0; i < sizeof(uint32_t); i++) //length *4 bytes
+    queue_enqueue( &_internals.TxQueue, ( (int)target_base_crc << 8 | ((uint8_t *)&cmd->crc)[i] ) );
+
+  //spin_unlock( &QueueLock );
+
+  tasklet_schedule(&_internals_irq_data_m2r_tasklet); 
 
   /* update the stats */
   _internals.stats.sent_cmd_count++;
