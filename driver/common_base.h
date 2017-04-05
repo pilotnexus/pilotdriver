@@ -62,6 +62,7 @@ typedef enum
   pilot_cmd_type_test_run,                    /* rpi <-> pilot request to run internal tests */
   pilot_cmd_type_plc_variable_get,          /* rpi <-> pilot command to get single variable */
   pilot_cmd_type_plc_variable_set,          /* rpi -> pilot command to write single */
+  rpcp_cmd_type_fpga_state                  /* rpi <-> fpga state */
 } pilot_cmd_type_t;
 
 /* enum that specifies the target of the stream communication
@@ -82,15 +83,15 @@ typedef enum
   target_module4_port1 = 0x07, /* the target is the first port of the Module in the slot 4  */
   target_module4_port2 = 0x08, /* the target is the second port of the Module in the slot 4 */
 
-  target_plc_read      = 0xCD, /* the target is the soft plc read */
-  target_plc_write     = 0xCE, /* the target is the soft plc write */
+  target_plc_read      = 0x60, /* the target is the soft plc read */
+  target_plc_write     = 0x61, /* the target is the soft plc write */
 
-  target_base          = 0xF0,
-  target_base_type     = 0xF1,
-  target_base_length   = 0xF2,
-  target_base_reserved = 0xF3,
-  target_base_crc      = 0xFE,
-  target_base_data     = 0xFF
+  target_base          = 0x70,
+  target_base_type     = 0x71,
+  target_base_length   = 0x72,
+  target_base_reserved = 0x73,
+  target_base_crc      = 0x74,
+  target_base_data     = 0x75
 
 } target_t;
 

@@ -1,8 +1,8 @@
-obj-m += pilot_slcd.o
+obj-m += pilot_fpga.o
 
-pilot_slcd-objs := module.o bmp.o
+pilot_fpga-objs := module.o flash.o
 
-SRC = /home/mdk/pilot/slcd
+SRC = /home/mdk/pilot/fpga
 BASE_DRV_SRC = /home/mdk/pilot/driver
 
 PREFIX = /home/mdk/rpi/tools-master/arm-bcm2708/arm-bcm2708-linux-gnueabi/bin/arm-bcm2708-linux-gnueabi-

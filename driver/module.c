@@ -727,8 +727,6 @@ static void pilot_spi0_handle_received_cmd_byte(target_t target, uint8_t data)
     _internals.current_cmd.index >= pilot_current_cmd_index_data_begin && 
     _internals.current_cmd.cmd_completion == 0xF )
   { //header done, data block
-    LOG_DEBUG("pilot_received_cmd_byte() header complete");
-
     _internals.current_cmd.cmd.data[_internals.current_cmd.index-pilot_current_cmd_index_data_begin] = data;
   }
   else if (target == target_base_crc)
@@ -736,7 +734,6 @@ static void pilot_spi0_handle_received_cmd_byte(target_t target, uint8_t data)
     crcindex = _internals.current_cmd.index - pilot_current_cmd_index_data_begin - _internals.current_cmd.length;
     ((uint8_t *)&_internals.current_cmd.cmd.crc)[crcindex] = data;
     _internals.current_cmd.cmd_completion |= (0x10 << crcindex);
-    LOG_DEBUG("pilot_received_cmd_byte() CRC byte");
   }
   else
   {
@@ -801,7 +798,7 @@ static void rpc_spi0_handle_received_data(spidata_t miso)
 
   //LOG_DEBUG("rpc_spi0_handle_received_data(miso=%x)", miso);
 
-  target = (miso >> 8);
+  target = (miso >> 8) & 0x7F;
   data   = (miso & 0xFF);
 
   if (target >= target_base)

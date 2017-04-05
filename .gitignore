@@ -20,3 +20,4 @@ _NCrunch_driver/
 *.save
 *.deb
 package/debian/DEBIAN/control
+*.swp

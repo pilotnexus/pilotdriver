@@ -1,5 +1,5 @@
 BASE_DIR = /home/mdk/pilot
-DRIVER_LIST = driver io plc rtc slcd tty
+DRIVER_LIST = driver io plc rtc slcd tty fpga
 PREFIX = /home/mdk/rpi/tools-master/arm-bcm2708/arm-bcm2708-linux-gnueabi/bin/arm-bcm2708-linux-gnueabi-
 KERNEL_HEADER_ROOT := /home/mdk/rpi
 KERNEL_DIR_LIST := $(shell ls -1vd $(KERNEL_HEADER_ROOT)/* | grep linux-rpi)
