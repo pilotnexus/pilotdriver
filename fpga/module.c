@@ -3,6 +3,8 @@
 #include <linux/proc_fs.h>    /* needed for functions to manage /proc/xxx files */
 #include <linux/seq_file.h>   /* needed for seq_file struct and functions */
 #include <linux/slab.h>       /* needed for kmalloc() */
+#include <linux/wait.h>       /* waitqueue */
+#include <linux/delay.h>       // needed for msleep()
 #include "module.h"           /* include defines that describe the module */
 #include "../driver/export.h"
 #include "common.h"
@@ -18,6 +20,8 @@ MODULE_LICENSE("GPL");
 #define NO_RESET 1
 
 internals_t m_internals ={.timeout=500};
+
+struct mutex access_lock;
 
 static const char fpga_name[] = "fpga";
 #define IS_MODULE_TYPE(m, n) (strncmp(n, m->name, strlen(n)) == 0)
@@ -64,11 +68,7 @@ static int pilot_fpga_try_get_fpga_state(module_slot_t slot, int timeout, int8_t
 static int pilot_fpga_proc_bitstream_show(struct seq_file *file, void *data)
 {
   /* get the module index */
-  module_slot_t module_index = (module_slot_t)file->private;
-
-  /* write the display buffer back to the user */
-  //seq_write(file, m_internals.modules[module_index].display_buffer->data, DISPLAY_BUFFERSIZE);
-  flash_read_id(module_index);
+  //module_slot_t module_index = (module_slot_t)file->private;
 
   return 0;
 }
@@ -150,6 +150,9 @@ static const struct file_operations proc_bitstream_fops = {
   .flush   = pilot_fpga_proc_bitstream_flush
 };
 
+// *******************************************************************
+// START proc "done"
+
 static const char pilot_fpga_proc_done_name[] = "done";
 
 static int pilot_fpga_proc_done_show(struct seq_file *file, void *data)
@@ -161,7 +164,6 @@ static int pilot_fpga_proc_done_show(struct seq_file *file, void *data)
   /* get the module index */
   int module_index = (int)file->private;
 
-  /* send a get resolution command */
   if (!pilot_fpga_try_get_fpga_state(module_index, m_internals.timeout, -1, -1))
     ret = -EFAULT;
   else
@@ -191,13 +193,58 @@ static const struct file_operations proc_done_fops = {
 };
 
 // *******************************************************************
+// START proc "flash_id"
+
+static const char pilot_fpga_proc_flash_id_name[] = "flash_id";
+
+static int pilot_fpga_proc_flash_id_show(struct seq_file *file, void *data)
+{
+  int ret;
+  char buffer[3];
+  int density_code;
+
+  /* get the module index */
+  int module_index = (int)file->private;
+
+  if (!pilot_fpga_try_get_fpga_state(module_index, m_internals.timeout, IGNORE, IN_RESET))
+    return -EFAULT;
+
+  flash_power_up(module_index);
+
+  flash_read_id(module_index, buffer);
+
+  density_code = buffer[1] & 0x1F;
+
+  seq_printf(file, "Manufacturer: %s\nSize:%iMBit\n", buffer[0] == 0x1F ? "Adesto" : "unknown", density_code);
+  
+  ret = 0;
+
+  return ret;
+}
+
+static int pilot_fpga_proc_flash_id_open(struct inode *inode, struct file *file)
+{
+  return single_open(file, pilot_fpga_proc_flash_id_show, PDE_DATA(inode));
+}
+
+static const struct file_operations proc_flash_id_fops = {
+  .owner   = THIS_MODULE,
+  .open    = pilot_fpga_proc_flash_id_open,
+  .read    = seq_read,
+  .release = single_release,
+};
+
+// *******************************************************************
 // START pilot interface function implementation
 
 static void pilot_fpga_proc_init(int slot)
 {
   struct proc_dir_entry *module_dir = pilot_get_proc_module_dir(slot);
+  init_waitqueue_head(&m_internals.receive_queue);
+  mutex_init(&access_lock);
   proc_create_data(pilot_fpga_proc_bitstream_name, 0666, module_dir, &proc_bitstream_fops, (void*)slot);
   proc_create_data(pilot_fpga_proc_done_name, 0444, module_dir, &proc_done_fops, (void*)slot);
+  proc_create_data(pilot_fpga_proc_flash_id_name, 0444, module_dir, &proc_flash_id_fops, (void*)slot);
 }
 
 static void pilot_fpga_proc_deinit(int slot)
@@ -205,6 +252,7 @@ static void pilot_fpga_proc_deinit(int slot)
   struct proc_dir_entry *module_dir = pilot_get_proc_module_dir(slot);
   remove_proc_entry(pilot_fpga_proc_bitstream_name, module_dir);
   remove_proc_entry(pilot_fpga_proc_done_name, module_dir);
+  remove_proc_entry(pilot_fpga_proc_flash_id_name, module_dir);
 }
 
 static void pilot_fpga_callback_recv(module_slot_t slot, module_port_t port, spidata_t data)
@@ -212,7 +260,10 @@ static void pilot_fpga_callback_recv(module_slot_t slot, module_port_t port, spi
   LOG_DEBUG("pilot_fpga_callback_recv(), slot: %i, data: %i", (int)slot, (int)(data & 0xFF));
 
   if (m_internals.recv_buf_index + 1 < RECEIVEBUFFER_SIZE)
+  {
     m_internals.recv_buf[m_internals.recv_buf_index++] = data & 0xFF;
+    wake_up_interruptible(&m_internals.receive_queue);
+  }
   else
     LOG_DEBUG("Receive Buffer Overflow");
 }

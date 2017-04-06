@@ -571,7 +571,7 @@ static void rpc_spi0_transmit(volatile unsigned int* spi0)
       recv = rpc_spi0_dataexchange(_internals.Spi0, send);
 
       queue_enqueue(&_internals.RxQueue, recv);
-      LOG_DEBUGALL("rpc_spi0_transmit() enqueued received word %x", recv);
+      //LOG_DEBUGALL("rpc_spi0_transmit() enqueued received word %x", recv);
       wake_up_interruptible(&data_received_wait_queue);
 
       if (data_available)

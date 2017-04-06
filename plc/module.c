@@ -9,7 +9,7 @@
 #include <linux/slab.h>       /* kmalloc() and kfree() */
 #include <linux/gfp.h>        /* flags for kmalloc() */
 #include <asm/uaccess.h>      /* copy_to_user() */
-#include <linux/wait.h>
+#include <linux/wait.h>       /* waitqueue */
 #include <linux/poll.h>       /* file polling */
 #include <linux/sched.h>      /* TASK_INTERRUPTIBLE */
 #include <linux/mutex.h>   /* mutex */

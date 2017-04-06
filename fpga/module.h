@@ -1,4 +1,7 @@
 #include <linux/module.h>
+#include <linux/wait.h>       /* waitqueue */
+#include <linux/mutex.h>   /* mutex */
+#include <linux/sched.h> // Required for task states (TASK_INTERRUPTIBLE etc ) 
 #include "common.h"
 
 MODULE_LICENSE("GPL");
@@ -18,5 +21,6 @@ typedef struct {
   int timeout;
   fpga_module_t modules[MODULES_COUNT];
   char recv_buf[RECEIVEBUFFER_SIZE];
-  int recv_buf_index;
+  volatile int recv_buf_index;
+  wait_queue_head_t receive_queue;
 } internals_t;
