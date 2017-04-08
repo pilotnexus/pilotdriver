@@ -18,6 +18,7 @@ typedef enum {
   pilot_io_module_type_o8,
   pilot_io_module_type_io16,
   pilot_io_module_type_ai8,
+  pilot_io_module_type_aio20,
   pilot_io_module_type_counter8
 } pilot_io_module_type_t;
 
@@ -28,8 +29,8 @@ typedef struct {
   pilot_io_module_type_t module_type;        /* type of the module */
   io_bits_t gpio_requested;                 /* gpio requested, bit 0 => free, bit 1 => requested */
   io_bits_t gpio_direction;                 /* gpio direction, bit 0 => input, bit 1 => output */
-  u64 gpio_states[IO_COUNT]; /* 0 => low, 1 => high for inputs / outputs, integer value for counter */
-  volatile int is_state_updated[IO_COUNT];
+  u64 gpio_states[20]; /* 0 => low, 1 => high for inputs / outputs, integer value for counter */
+  volatile int is_state_updated[20];
   struct gpio_chip gpio_chip;     /* corresponding gpio_chip struct for the kernel */
 } gpio_module_t;
 
@@ -44,12 +45,23 @@ typedef struct {
   struct proc_dir_entry *proc_ia[IO_COUNT]; /* holds the analog input entries */
 } ai8_module_t;
 
+typedef struct {
+  int module_index;
+  int io_index;
+} aio20_info_t;
+
+typedef struct {
+  aio20_info_t info[20];
+  struct proc_dir_entry *proc_aio[20]; /* holds the analog input entries */
+} aio20_module_t;
+
 /* struct that groups internal members */
 typedef struct {
   int driverId;  /* as supplied by the main pilot driver pilot_register_driver() call */
   gpio_module_t gpio_modules[MODULES_COUNT];
   counter_module_t counter_modules[MODULES_COUNT];
   ai8_module_t ai8_modules[MODULES_COUNT];
+  aio20_module_t aio20_modules[MODULES_COUNT];
   struct proc_dir_entry* proc_module_dir[MODULES_COUNT]; /* holds the base module directory entry (/proc/pilot/moduleX) */
   int gpio_base; /* gpio base number, gpio allocation starts from here */
   int gpio_max;  /* gpio max number, gpio allocation stops here */

@@ -210,7 +210,7 @@ typedef enum {
 /* helper enum for pilot_cmd_type_input_get_input handling */
 typedef enum {
   pilot_input_index_target = 0, /* encode the input index in the first byte */
-  pilot_input_index_value  = 4  /* encode the input index in the last 4 bytes */
+  pilot_input_index_value  = 4  /* encode the input value in the last 4 bytes */
 } pilot_input_index_t;
 
 typedef enum {
@@ -271,7 +271,7 @@ typedef enum {
 typedef enum
 {
   pilot_output_index_target = 0, /* encode the output target in the first byte */
-  pilot_output_index_value = 7,  /* encode the output value in the last byte */
+  pilot_output_index_value = 4,  /* encode the output value in the last four bytes */
 } pilot_output_index_t;
 
 typedef enum
