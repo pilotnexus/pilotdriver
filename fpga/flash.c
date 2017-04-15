@@ -35,7 +35,7 @@ int xfer_spi(module_slot_t slot, uint8_t *data, int n, uint8_t cont)
 	else
 	   	pilot_send(target | 0x80, data, 1);
 
-    LOG_DEBUG("xfer_spi() waiting for completed reply");
+    LOG_DEBUG("xfer_spi() target=%i waiting for completed reply", target);
 	//TODO, use waitqueue...or similar with timeout
 
     waitret = wait_event_interruptible_timeout(m_internals.receive_queue, m_internals.recv_buf_index >= n, (100 * HZ / 1000));

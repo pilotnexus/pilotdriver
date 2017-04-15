@@ -27,6 +27,7 @@
 #include <asm/atomic.h>      // needed for atomic_cmpxchg() function
 #include <linux/spinlock.h>  // needed for spinlock_t and it's functions
 #include <linux/kthread.h>   // kthread_run()
+#include <linux/ktime.h>     //ktime support
 
 // forward declaration of pilot private functions
 static int  __init rpc_init(void);
@@ -49,15 +50,15 @@ static void                   rpc_spi0_enable(volatile unsigned int* spi);
 static void                   rpc_spi0_reset(volatile unsigned int* spi, int spiclk);
 static spidata_t              rpc_spi0_dataexchange(volatile unsigned int* spi, spidata_t mosi);
 
-static void                   rpc_spi0_transmit(volatile unsigned int* spi);
+static void                   rpc_spi0_transmit(volatile unsigned int* spi, int max_data_per_irq);
 static void                   rpc_spi0_handle_received_data(spidata_t miso);
 
 static int         rpc_irq_data_m2r_init (int gpio);
 static void        rpc_irq_data_m2r_deinit(int irq);
 static irqreturn_t rpc_irq_data_m2r_handler(int irq, void* dev_id);
 
-//static void        rpc_irq_data_m2r_work_queue_handler(struct work_struct *work); /* workqueue definition */
-static void        rpc_irq_data_m2r_work_queue_handler(unsigned long data); /* tasklet definition */
+static void        rpc_irq_data_m2r_work_queue_handler(struct work_struct *work); /* workqueue definition */
+//static void        rpc_irq_data_m2r_work_queue_handler(unsigned long data); /* tasklet definition */
 
 static void rpc_proc_init(void);
 static void rpc_proc_deinit(void);
@@ -69,11 +70,18 @@ static int pilot_handle_module_assignment(module_slot_t slot, const pilot_module
 static void rpc_unregister_driver(driver_t* driver);
 static void rpc_unassign_slot(module_slot_t slot);
 
+#define MAX_SPI_DATAEXCHANGE_BYTES_IN_IRQ 200
+#define MAX_SPI_DATAEXCHANGE_BYTES_IN_THREAD 1000
+
 // static variables
+u64 start_spi_us, end_spi_us, average_us = 10000000;
+uint32_t average_spi_load;
 
 struct task_struct *pilot_receive_thread;
 static int stop_receive_thread = 0;
 DECLARE_WAIT_QUEUE_HEAD(data_received_wait_queue);
+
+static DEFINE_MUTEX(spi_transmit_lock);
 
 static internals_t _internals; /* holds all private fields */
 
@@ -88,10 +96,11 @@ static gpio_config_t _internals_gpio[] = {
 //static struct workqueue_struct *comm_wq;
 
 /* workqueue for bottom half of DATA_M2R irq handler */
-//static DECLARE_WORK(_internals_irq_data_m2r_work, rpc_irq_data_m2r_work_queue_handler);
+struct workqueue_struct *workqueue_struct_spi_dataexchange;
+static DECLARE_WORK(_internals_irq_data_m2r_work, rpc_irq_data_m2r_work_queue_handler);
 
 /* tasklet */
-DECLARE_TASKLET( _internals_irq_data_m2r_tasklet, rpc_irq_data_m2r_work_queue_handler, (unsigned long) 0 );
+//DECLARE_TASKLET( _internals_irq_data_m2r_tasklet, rpc_irq_data_m2r_work_queue_handler, (unsigned long) 0 );
 
 /* spinlock to secure the spi data transfer */
 //static spinlock_t QueueLock;
@@ -164,6 +173,7 @@ static void pilot_internals_init()
   /* initialize the cmd handler list */
   INIT_LIST_HEAD(&_internals.list_cmd_handler);
 
+  start_spi_us = end_spi_us = ktime_to_us(ktime_get());
   _internals.spiclk = 250;
 }
 
@@ -175,7 +185,7 @@ static int pilot_receive_task(void *vp)
 
   while (1)
   {
-    if (wait_event_interruptible_timeout(data_received_wait_queue, !queue_is_empty(&_internals.RxQueue) || stop_receive_thread == 1,  (500 * HZ / 1000)) == -ERESTARTSYS)
+    if (wait_event_interruptible_timeout(data_received_wait_queue, !queue_is_empty(&_internals.RxQueue) || stop_receive_thread == 1,  (200 * HZ / 1000)) == -ERESTARTSYS)
     {
       LOG_DEBUG("receive thread interrupted");
       return 1; //interrupted
@@ -188,6 +198,9 @@ static int pilot_receive_task(void *vp)
     {
       rpc_spi0_handle_received_data(recv);
     }
+
+    //check for new data if DATA_M2R sticks to high
+    queue_work(workqueue_struct_spi_dataexchange, &_internals_irq_data_m2r_work);
   }
 }
 
@@ -196,7 +209,7 @@ static int __init rpc_init(void)
 {
   int i, retValue = SUCCESS;
   LOG_DEBUG("pilot_init()");
-  
+  workqueue_struct_spi_dataexchange = create_singlethread_workqueue("K_PILOT_SPI_DATAEXCHANGE");
   pilot_receive_thread = kthread_run(pilot_receive_task, NULL, "K_PILOT_RECV_TASK");
 
   pilot_internals_init();
@@ -251,6 +264,9 @@ static void __exit rpc_exit(void)
 {
   LOG_DEBUG("rpc_exit() called.");
   
+  flush_workqueue(workqueue_struct_spi_dataexchange);
+  destroy_workqueue(workqueue_struct_spi_dataexchange);
+
   if (pilot_receive_thread) 
   {
     LOG_DEBUG("Trying to stop receive thread...");
@@ -467,6 +483,7 @@ static int rpc_irq_data_m2r_init(int gpio)
                        );
 
     LOG_DEBUG( "request_irq(%i..) returned %i", irq, err);
+
     return (err == SUCCESS) ? irq : -1;
   }
 }
@@ -482,30 +499,25 @@ static void rpc_irq_data_m2r_deinit(int irq)
 /* description: gets invoked when the stm changes the DATA pin */
 static irqreturn_t rpc_irq_data_m2r_handler(int irq, void* dev_id)
 {
-  //if (GPIO_GET(DATA_M2R))
-  //{
-    //LOG_DEBUG("queue_work() for rpc_irq_data_m2r_handler()");
-    //flush_workqueue(comm_wq);
-    //LOG_DEBUG("queue_work() has no pending tasks, start queue_work()");
-	
-	//queue_work(comm_wq, &_internals_irq_data_m2r_work );
-    //schedule_work(&_internals_irq_data_m2r_work );
-	tasklet_schedule(&_internals_irq_data_m2r_tasklet);	
-	
-    LOG_DEBUGALL("queue_work() for rpc_irq_data_m2r_handler() successful");
-  //}
-
+  //tasklet_schedule(&_internals_irq_data_m2r_tasklet); 
+  queue_work(workqueue_struct_spi_dataexchange, &_internals_irq_data_m2r_work);
+  LOG_DEBUGALL("queue_work() for rpc_irq_data_m2r_handler() successful");
   return IRQ_HANDLED;
 }
 
 /* description: work queue handler is scheduled by the bottom half of the DATA_M2R interrupt */
-//static void rpc_irq_data_m2r_work_queue_handler(struct work_struct* args)
-static void rpc_irq_data_m2r_work_queue_handler(unsigned long data)
+static void rpc_irq_data_m2r_work_queue_handler(struct work_struct* args)
+//static void rpc_irq_data_m2r_work_queue_handler(unsigned long data)
 {
   LOG_DEBUGALL("rpc_irq_data_m2r_work_queue_handler() called");
 
   /* start the spi transmission */
-  rpc_spi0_transmit(_internals.Spi0);
+  //if (mutex_trylock(&spi_transmit_lock) > 0)
+  //{
+    mb();
+    rpc_spi0_transmit(_internals.Spi0, MAX_SPI_DATAEXCHANGE_BYTES_IN_IRQ);
+  //  mutex_unlock(&spi_transmit_lock);
+  //}
 }
 
 // ****************** START SPI specific functions ************************
@@ -552,35 +564,42 @@ static void rpc_spi0_enable(volatile unsigned int* spi0)
   SPI0_CNTLSTAT(spi0) = SPI0_CS_CHIPSEL0;
 }
 
-static void rpc_spi0_transmit(volatile unsigned int* spi0)
+static void rpc_spi0_transmit(volatile unsigned int* spi0, int max_data_per_irq)
 {
   spidata_t recv, send;
   int data_available;
-  int max_data_per_irq = 1000, data_count = 0; /* guard against stuck DATA_M2R high pin! */
-
+  int data_count = 0; /* guard against stuck DATA_M2R high pin! */
+  int old_end_spi_us;
   //spin_lock( &QueueLock );
 
+  old_end_spi_us = end_spi_us;
+  start_spi_us = ktime_to_us(ktime_get());
   while (1)
   {
-    /* get the next data to send */
-    if ((data_available = queue_dequeue(&_internals.TxQueue, &send)) == 0)
-      send = (target_invalid << 8);
-
-    if ( data_available || (GPIO_GET(DATA_M2R) && data_count++ <= max_data_per_irq))
+    if (!queue_is_empty(&_internals.TxQueue) || (GPIO_GET(DATA_M2R) && (data_count++ <= max_data_per_irq)))
     {
-      recv = rpc_spi0_dataexchange(_internals.Spi0, send);
+      if (queue_get_room(&_internals.RxQueue) > 0)
+      {
+        /* get the next data to send */
+        if ((data_available = queue_dequeue(&_internals.TxQueue, &send)) == 0)
+        send = (target_invalid << 8);
 
-      queue_enqueue(&_internals.RxQueue, recv);
-      //LOG_DEBUGALL("rpc_spi0_transmit() enqueued received word %x", recv);
-      wake_up_interruptible(&data_received_wait_queue);
+        recv = rpc_spi0_dataexchange(_internals.Spi0, send);
 
-      if (data_available)
-        _internals.stats.sent_byte_count[(send >> 8)]++;
+        queue_enqueue(&_internals.RxQueue, recv);
+        //LOG_DEBUGALL("rpc_spi0_transmit() enqueued received word %x", recv);
+        wake_up_interruptible(&data_received_wait_queue);
+
+        if (data_available)
+          _internals.stats.sent_byte_count[(send >> 8)]++;
+      }
+      else //no receive buffer free
+        break;
     }
     else
       break;
-
   }
+  end_spi_us = ktime_to_us(ktime_get());
 
   LOG_DEBUGALL("rpc_spi0_transmit() done");
   //spin_unlock(&QueueLock);
@@ -684,7 +703,7 @@ static void pilot_spi0_handle_received_cmd(pilot_cmd_t cmd)
 /* description: this function handles data received from the stm that is targetted at the base driver */
 static void pilot_spi0_handle_received_cmd_byte(target_t target, uint8_t data)
 {
-  int i, crcindex;
+  int crcindex;
   uint8_t length_parity;
 
   if (target == target_base)
@@ -713,7 +732,7 @@ static void pilot_spi0_handle_received_cmd_byte(target_t target, uint8_t data)
           _internals.current_cmd.cmd.length = data;
           _internals.current_cmd.cmd_completion |= 0x4; 
         }
-        LOG_DEBUG("pilot_received_cmd_byte() length: %i (0x%x)", _internals.current_cmd.length, _internals.current_cmd.cmd.length);
+        LOG_DEBUGALL("pilot_received_cmd_byte() length: %i (0x%x)", _internals.current_cmd.length, _internals.current_cmd.cmd.length);
 
       break;
       case (uint8_t)target_base_reserved: _internals.current_cmd.cmd.reserved = data; _internals.current_cmd.cmd_completion |= 0x8; break;
@@ -753,9 +772,9 @@ static void pilot_spi0_handle_received_cmd_byte(target_t target, uint8_t data)
     int32_t crc_check = crc((char *) &_internals.current_cmd.cmd, pilot_current_cmd_index_data_begin + _internals.current_cmd.length);
 
     //LOG_DEBUG("cmd completed - target: %i, type: %i", _internals.current_cmd.cmd.target, _internals.current_cmd.cmd.type);
-    LOG_DEBUG("pilot_received_cmd: target: %i, type: %i, data length: %u (CRC received: %X, own calculated CRC: %X)",(int) _internals.current_cmd.cmd.target,(int) _internals.current_cmd.cmd.type, _internals.current_cmd.length,_internals.current_cmd.cmd.crc, crc_check);
+    LOG_DEBUGALL("pilot_received_cmd: target: %i, type: %i, data length: %u (CRC received: %X, own calculated CRC: %X)",(int) _internals.current_cmd.cmd.target,(int) _internals.current_cmd.cmd.type, _internals.current_cmd.length,_internals.current_cmd.cmd.crc, crc_check);
 
-    #ifdef DEBUG
+    #ifdef DEBUGALL
       printk("     data: '");
 
       for(i=0;i<_internals.current_cmd.length;i++)
@@ -1955,8 +1974,9 @@ int pilot_try_send(target_t target, const char* data, int count)
   /* start the spi transmission */
   LOG_DEBUGALL("queue_work() for _internals_irq_data_m2r_work()");
 
-  tasklet_schedule(&_internals_irq_data_m2r_tasklet);	
-  
+  //tasklet_schedule(&_internals_irq_data_m2r_tasklet);	
+  queue_work(workqueue_struct_spi_dataexchange, &_internals_irq_data_m2r_work);
+
   LOG_DEBUGALL("work scheduled successfully");
 
   return ret;
@@ -2017,7 +2037,8 @@ void pilot_send_cmd(pilot_cmd_t* cmd)
 
   //spin_unlock( &QueueLock );
 
-  tasklet_schedule(&_internals_irq_data_m2r_tasklet); 
+  //tasklet_schedule(&_internals_irq_data_m2r_tasklet);
+  queue_work(workqueue_struct_spi_dataexchange, &_internals_irq_data_m2r_work);
 
   /* update the stats */
   _internals.stats.sent_cmd_count++;
@@ -2028,7 +2049,7 @@ void pilot_send_cmd(pilot_cmd_t* cmd)
 /* description: gets the number of remaining free bytes of the send buffer for the specified target */
 int pilot_get_free_send_buffer_size(target_t target)
 {
-  LOG_DEBUG("pilot_get_free_send_buffer_size(target=%i) called", target);
+  //LOG_DEBUG("pilot_get_free_send_buffer_size(target=%i) called", target);
   //if (target == target_t_invalid || target > target_t_module4_port2)
   //{
   //  if (printk_ratelimit())

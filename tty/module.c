@@ -156,6 +156,7 @@ static const char can[]      = "can";
 static const char can_2p[]   = "can_2p";
 static const char gps[]      = "gps";
 static const char gsm[]      = "gsm_2g";
+static const char umts[]      = "umts_3g";
 static const char rs485[]    = "r485";
 static const char rs485_2p[] = "r485_2p";
 static const char rs485_4w[] = "r485_4w";
@@ -172,6 +173,8 @@ static pilot_tty_module_type_t pilot_tty_get_module_type(const pilot_module_type
 
   if (IS_MODULE_TYPE(module_type, gsm))
 	  tty_type = pilot_tty_module_type_gsm;
+  else if (IS_MODULE_TYPE(module_type, umts))
+    tty_type = pilot_tty_module_type_gsm;
   else if (IS_MODULE_TYPE(module_type, profibus))
 	  tty_type = pilot_tty_module_type_profibus;
   else if (IS_MODULE_TYPE(module_type, gps))

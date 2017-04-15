@@ -8,7 +8,7 @@ MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Daniel Amesberger");
 MODULE_DESCRIPTION("PiloT FPGA kernel module");
 
-#define RECEIVEBUFFER_SIZE 256
+#define RECEIVEBUFFER_SIZE 2560
 
 typedef struct {
   uint8_t done;

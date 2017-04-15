@@ -7,6 +7,7 @@
 #include <linux/delay.h>       // needed for msleep()
 #include "module.h"           /* include defines that describe the module */
 #include "../driver/export.h"
+#include "../driver/queue.h"
 #include "common.h"
 #include "flash.h"
 
@@ -44,7 +45,8 @@ static int pilot_fpga_try_get_fpga_state(module_slot_t slot, int timeout, int8_t
   unsigned long timestamp;
   int timedout = 0;
 
-  /* send a request for the fpga resolution */
+  LOG_DEBUG("calling pilot_fpga_send_get_fpga_state()");
+
   pilot_fpga_send_get_fpga_state(slot, chipselect, reset);
 
   /* choose a point in time thats timeout ms in the future */
@@ -55,6 +57,7 @@ static int pilot_fpga_try_get_fpga_state(module_slot_t slot, int timeout, int8_t
     if (time_after(jiffies, timestamp))
     {
       timedout=1;
+      LOG_DEBUG("calling pilot_fpga_send_get_fpga_state() TIMED OUT");
       break;
     }
     udelay(100);
@@ -68,8 +71,16 @@ static int pilot_fpga_try_get_fpga_state(module_slot_t slot, int timeout, int8_t
 static int pilot_fpga_proc_bitstream_show(struct seq_file *file, void *data)
 {
   /* get the module index */
+  //int addr = 0;
+  //uint8_t command[4] = { 0x02, (uint8_t)(addr >> 16), (uint8_t)(addr >> 8), (uint8_t)addr };
+  //int bytes_written = 0, blocksize, sendbuffersize;
   //module_slot_t module_index = (module_slot_t)file->private;
 
+  //target_t target = target_t_from_module_slot_and_port(module_index, module_port_1);
+
+  //LOG_DEBUG("called pilot_fpga_proc_bitstream_write(target: %i, count=%i, off=%i)", (int)target, count, (int)*off);
+
+  //  pilot_send(target, command, 4);
   return 0;
 }
 
@@ -79,7 +90,8 @@ static int pilot_fpga_proc_bitstream_open(struct inode *inode, struct file *file
 
   LOG_DEBUG("called pilot_fpga_proc_bitstream_open() for slot %i", (int)slot);
 
-  if (!pilot_fpga_try_get_fpga_state(slot, m_internals.timeout, SELECT_CHIP, IN_RESET))
+//TODO CHANGE BACK TO RESET
+  if (!pilot_fpga_try_get_fpga_state(slot, m_internals.timeout, SELECT_CHIP, NO_RESET))
     return -EINVAL;
 
   return single_open(file, pilot_fpga_proc_bitstream_show, PDE_DATA(inode));
@@ -97,33 +109,54 @@ static int pilot_fpga_proc_bitstream_flush(struct file *file, fl_owner_t id)
 
 static int pilot_fpga_proc_bitstream_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
+  int addr = 0;
+  uint8_t command[4] = { 0x02, (uint8_t)(addr >> 16), (uint8_t)(addr >> 8), (uint8_t)addr };
   int bytes_written = 0, blocksize, sendbuffersize;
-  target_t target = target_t_from_module_slot_and_port((int)PDE_DATA(file->f_inode), 0);
+  int module_index = (int)PDE_DATA(file->f_inode);
+  target_t target = target_t_from_module_slot_and_port(module_index, module_port_1);
 
-
-  LOG_DEBUG("called pilot_fpga_proc_bitstream_write(count=%i, off=%i)", count, (int)*off);
+  LOG_DEBUG("called pilot_fpga_proc_bitstream_write(target: %i, count=%i, off=%i)", (int)target, count, (int)*off);
 
   //LOG_DEBUG("pilot_tty_write(count=%i) called", count);
   //spin_lock(&_internals_lock);
 
-  while (bytes_written < count)
-  {
-    /* wait for the stm buffer to become available */
-    while (pilot_get_stm_bufferstate() == stm_bufferstate_full)
-      cpu_relax();
+    pilot_send(target, command, 4);
 
-    /* wait for the internal sendbuffer to become available again */
-    while ((sendbuffersize = pilot_get_free_send_buffer_size(target)) <= 0)
-      cpu_relax();
+    while (bytes_written < count)
+    {
+      /* wait for the stm buffer to become available */
+      while (pilot_get_stm_bufferstate() == stm_bufferstate_full)
+        cpu_relax();
 
-    blocksize = count - bytes_written; /* sent the remaining bytes */
-    if (blocksize > sendbuffersize)    /* ...but not more than the remaining sendbuffersize */
-      blocksize = sendbuffersize;
+      /* wait for the internal sendbuffer to become available again */
+      while ((sendbuffersize = pilot_get_free_send_buffer_size(target)) <= QUEUE_SIZE/2)
+        cpu_relax();
 
-    //pilot_send(target, buf+bytes_written, blocksize); /* send the bytes */
-    bytes_written += blocksize; /* increment the number of bytes written */
-  }
+      blocksize = count - bytes_written; /* sent the remaining bytes */
+      if (blocksize > sendbuffersize)    /* ...but not more than the remaining sendbuffersize */
+        blocksize = sendbuffersize;
 
+      if (bytes_written + blocksize == count) //last block
+      {
+        LOG_DEBUG("bitstream_write() sending %i bytes (LAST)", blocksize);
+        if (blocksize > 1)
+          pilot_send(target, buf+bytes_written, blocksize-1); /* send the bytes */
+
+        LOG_DEBUG("bitstream_write() final byte to target %i", target);
+        pilot_send(target | 0x80, buf+bytes_written+blocksize-1, 1); /* send the bytes */
+      }
+      else
+      {
+        LOG_DEBUG("bitstream_write() sending %i bytes", blocksize);
+        pilot_send(target, buf+bytes_written, blocksize); /* send the bytes */
+      }
+      bytes_written += blocksize; /* increment the number of bytes written */
+      m_internals.recv_buf_index = 0; //TODO temporary, while module_port_2
+    }
+
+  if (!pilot_fpga_try_get_fpga_state(module_index, 1000, UNSELECT_CHIP, NO_RESET))
+     return -EINVAL;
+  
   //write bitstream
   return bytes_written;
 }
@@ -134,7 +167,7 @@ static int pilot_fpga_proc_bitstream_release(struct inode *inode, struct file *f
 
   LOG_DEBUG("called pilot_fpga_proc_bitstream_release() for slot %i", (int)slot);
 
-  pilot_fpga_try_get_fpga_state(slot, m_internals.timeout, UNSELECT_CHIP, IN_RESET); //change to NO_RESET when hardware ready
+  //pilot_fpga_try_get_fpga_state(slot, m_internals.timeout, UNSELECT_CHIP, IN_RESET); //change to NO_RESET when hardware ready
 
   return single_release(inode, file);
 }
@@ -165,7 +198,7 @@ static int pilot_fpga_proc_done_show(struct seq_file *file, void *data)
   int module_index = (int)file->private;
 
   if (!pilot_fpga_try_get_fpga_state(module_index, m_internals.timeout, -1, -1))
-    ret = -EFAULT;
+    ret = -EFAULT;  
   else
   {
     /* create the string */
@@ -257,7 +290,7 @@ static void pilot_fpga_proc_deinit(int slot)
 
 static void pilot_fpga_callback_recv(module_slot_t slot, module_port_t port, spidata_t data)
 {
-  LOG_DEBUG("pilot_fpga_callback_recv(), slot: %i, data: %i", (int)slot, (int)(data & 0xFF));
+  LOG_DEBUGALL("pilot_fpga_callback_recv(), slot: %i, data: %i", (int)slot, (int)(data & 0xFF));
 
   if (m_internals.recv_buf_index + 1 < RECEIVEBUFFER_SIZE)
   {
