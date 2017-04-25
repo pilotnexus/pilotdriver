@@ -21,3 +21,4 @@ _NCrunch_driver/
 *.deb
 package/debian/DEBIAN/control
 *.swp
+driver/debug.h
