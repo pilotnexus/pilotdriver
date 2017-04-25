@@ -19,8 +19,7 @@
 #include <linux/gpio.h>      // needed for gpio_XXX() functions
 #include <linux/smp.h>		 // needed for get_cpu()
 #include <asm/io.h>          // needed for ioremap & iounmap
-#include <asm/delay.h>       // needed for udelay()
-
+#include <linux/delay.h>       // needed for udelay()
 #include <linux/proc_fs.h>   // needed for functions to manage /proc/xxx files
 #include <linux/seq_file.h>  /* sequential file handles the read/write calls to /proc/files */
 #include <asm/uaccess.h>     // needed for copy_from_user() function
@@ -57,8 +56,8 @@ static int         rpc_irq_data_m2r_init (int gpio);
 static void        rpc_irq_data_m2r_deinit(int irq);
 static irqreturn_t rpc_irq_data_m2r_handler(int irq, void* dev_id);
 
-static void        rpc_irq_data_m2r_work_queue_handler(struct work_struct *work); /* workqueue definition */
-//static void        rpc_irq_data_m2r_work_queue_handler(unsigned long data); /* tasklet definition */
+//static void        rpc_irq_data_m2r_work_queue_handler(struct work_struct *work); /* workqueue definition */
+static void        rpc_irq_data_m2r_work_queue_handler(unsigned long data); /* tasklet definition */
 
 static void rpc_proc_init(void);
 static void rpc_proc_deinit(void);
@@ -96,11 +95,10 @@ static gpio_config_t _internals_gpio[] = {
 //static struct workqueue_struct *comm_wq;
 
 /* workqueue for bottom half of DATA_M2R irq handler */
-struct workqueue_struct *workqueue_struct_spi_dataexchange;
-static DECLARE_WORK(_internals_irq_data_m2r_work, rpc_irq_data_m2r_work_queue_handler);
+//static DECLARE_WORK(_internals_irq_data_m2r_work, rpc_irq_data_m2r_work_queue_handler);
 
 /* tasklet */
-//DECLARE_TASKLET( _internals_irq_data_m2r_tasklet, rpc_irq_data_m2r_work_queue_handler, (unsigned long) 0 );
+DECLARE_TASKLET( _internals_irq_data_m2r_tasklet, rpc_irq_data_m2r_work_queue_handler, (unsigned long) 0 );
 
 /* spinlock to secure the spi data transfer */
 //static spinlock_t QueueLock;
@@ -198,9 +196,6 @@ static int pilot_receive_task(void *vp)
     {
       rpc_spi0_handle_received_data(recv);
     }
-
-    //check for new data if DATA_M2R sticks to high
-    queue_work(workqueue_struct_spi_dataexchange, &_internals_irq_data_m2r_work);
   }
 }
 
@@ -209,7 +204,7 @@ static int __init rpc_init(void)
 {
   int i, retValue = SUCCESS;
   LOG_DEBUG("pilot_init()");
-  workqueue_struct_spi_dataexchange = create_singlethread_workqueue("K_PILOT_SPI_DATAEXCHANGE");
+  
   pilot_receive_thread = kthread_run(pilot_receive_task, NULL, "K_PILOT_RECV_TASK");
 
   pilot_internals_init();
@@ -264,9 +259,6 @@ static void __exit rpc_exit(void)
 {
   LOG_DEBUG("rpc_exit() called.");
   
-  flush_workqueue(workqueue_struct_spi_dataexchange);
-  destroy_workqueue(workqueue_struct_spi_dataexchange);
-
   if (pilot_receive_thread) 
   {
     LOG_DEBUG("Trying to stop receive thread...");
@@ -499,15 +491,14 @@ static void rpc_irq_data_m2r_deinit(int irq)
 /* description: gets invoked when the stm changes the DATA pin */
 static irqreturn_t rpc_irq_data_m2r_handler(int irq, void* dev_id)
 {
-  //tasklet_schedule(&_internals_irq_data_m2r_tasklet); 
-  queue_work(workqueue_struct_spi_dataexchange, &_internals_irq_data_m2r_work);
+	tasklet_schedule(&_internals_irq_data_m2r_tasklet);	
   LOG_DEBUGALL("queue_work() for rpc_irq_data_m2r_handler() successful");
   return IRQ_HANDLED;
 }
 
 /* description: work queue handler is scheduled by the bottom half of the DATA_M2R interrupt */
-static void rpc_irq_data_m2r_work_queue_handler(struct work_struct* args)
-//static void rpc_irq_data_m2r_work_queue_handler(unsigned long data)
+//static void rpc_irq_data_m2r_work_queue_handler(struct work_struct* args)
+static void rpc_irq_data_m2r_work_queue_handler(unsigned long data)
 {
   LOG_DEBUGALL("rpc_irq_data_m2r_work_queue_handler() called");
 
@@ -576,22 +567,30 @@ static void rpc_spi0_transmit(volatile unsigned int* spi0, int max_data_per_irq)
   start_spi_us = ktime_to_us(ktime_get());
   while (1)
   {
-    if (!queue_is_empty(&_internals.TxQueue) || (GPIO_GET(DATA_M2R) && (data_count++ <= max_data_per_irq)))
+    if (!queue_is_empty(&_internals.TxQueue) || _internals.pilot_recv_buffer_full || (GPIO_GET(DATA_M2R) && (data_count++ <= max_data_per_irq)))
     {
       if (queue_get_room(&_internals.RxQueue) > 0)
       {
         /* get the next data to send */
-        if ((data_available = queue_dequeue(&_internals.TxQueue, &send)) == 0)
-        send = (target_invalid << 8);
+        if (_internals.pilot_recv_buffer_full)
+          send = (target_invalid << 8);
+        else if ((data_available = queue_dequeue(&_internals.TxQueue, &send)) == 0)
+          send = (target_invalid << 8);
 
         recv = rpc_spi0_dataexchange(_internals.Spi0, send);
 
-        queue_enqueue(&_internals.RxQueue, recv);
+        if (recv & 0x8000) /* pilot receive buffer full bit set */
+          _internals.pilot_recv_buffer_full = true;
+        else
+          _internals.pilot_recv_buffer_full = false;
+
+        queue_enqueue(&_internals.RxQueue, recv & 0x7FFF);
         //LOG_DEBUGALL("rpc_spi0_transmit() enqueued received word %x", recv);
         wake_up_interruptible(&data_received_wait_queue);
 
         if (data_available)
           _internals.stats.sent_byte_count[(send >> 8)]++;
+
       }
       else //no receive buffer free
         break;
@@ -1974,9 +1973,8 @@ int pilot_try_send(target_t target, const char* data, int count)
   /* start the spi transmission */
   LOG_DEBUGALL("queue_work() for _internals_irq_data_m2r_work()");
 
-  //tasklet_schedule(&_internals_irq_data_m2r_tasklet);	
-  queue_work(workqueue_struct_spi_dataexchange, &_internals_irq_data_m2r_work);
-
+  tasklet_schedule(&_internals_irq_data_m2r_tasklet);	
+  
   LOG_DEBUGALL("work scheduled successfully");
 
   return ret;
@@ -2037,8 +2035,7 @@ void pilot_send_cmd(pilot_cmd_t* cmd)
 
   //spin_unlock( &QueueLock );
 
-  //tasklet_schedule(&_internals_irq_data_m2r_tasklet);
-  queue_work(workqueue_struct_spi_dataexchange, &_internals_irq_data_m2r_work);
+  tasklet_schedule(&_internals_irq_data_m2r_tasklet); 
 
   /* update the stats */
   _internals.stats.sent_cmd_count++;

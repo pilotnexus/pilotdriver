@@ -115,6 +115,7 @@ typedef struct
 
   stream_callback_t stream_callback;
 
+  bool pilot_recv_buffer_full;
 } internals_t;
 
 #endif

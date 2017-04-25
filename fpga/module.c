@@ -20,6 +20,7 @@ MODULE_LICENSE("GPL");
 #define IN_RESET 0
 #define NO_RESET 1
 
+DECLARE_WAIT_QUEUE_HEAD(recv_wait); 
 internals_t m_internals ={.timeout=500};
 
 struct mutex access_lock;
@@ -68,33 +69,90 @@ static int pilot_fpga_try_get_fpga_state(module_slot_t slot, int timeout, int8_t
  return timedout ? 0 : 1;
 }
 
+static int pilot_fpga_proc_bitstream_read(struct file *filp, char *buf, size_t count, loff_t *f_pos)
+{
+ int module_index = (int)PDE_DATA(filp->f_inode);
+ int ret = 0, chunk, pos = (int)*f_pos;
+
+ LOG_DEBUG("called pilot_fpga_proc_bitstream_read() for slot %i, fpos %i", (int)module_index, (int)*f_pos);
+
+ if (m_internals.modules[module_index].bitstream_size == 0)
+ {
+    flash_power_up(module_index);
+    flash_read(module_index, 0x07FF00, (char *)&m_internals.modules[module_index].bitstream_size, sizeof(size_t));
+    LOG_DEBUG("reading bitstream (size: %i)", (int)m_internals.modules[module_index].bitstream_size);
+ }
+
+ if (m_internals.modules[module_index].bitstream_size > 0 && (pos < m_internals.modules[module_index].bitstream_size))
+ {
+    chunk = (pos + 256) > m_internals.modules[module_index].bitstream_size ? m_internals.modules[module_index].bitstream_size-pos : 256;
+    flash_read(module_index, pos, buf, chunk);
+    ret = chunk;
+    *f_pos += chunk;
+ }
+
+ return ret;
+}
+
+/*
 static int pilot_fpga_proc_bitstream_show(struct seq_file *file, void *data)
 {
-  /* get the module index */
   //int addr = 0;
-  //uint8_t command[4] = { 0x02, (uint8_t)(addr >> 16), (uint8_t)(addr >> 8), (uint8_t)addr };
-  //int bytes_written = 0, blocksize, sendbuffersize;
-  //module_slot_t module_index = (module_slot_t)file->private;
+  char buffer[256];
+  size_t count = 0, addr=0, chunk;
 
-  //target_t target = target_t_from_module_slot_and_port(module_index, module_port_1);
+  int module_index = (int)file->private;
+  target_t target = target_t_from_module_slot_and_port(module_index, module_port_2);
 
-  //LOG_DEBUG("called pilot_fpga_proc_bitstream_write(target: %i, count=%i, off=%i)", (int)target, count, (int)*off);
+  LOG_DEBUG("called pilot_fpga_proc_bitstream_show(target: %i, count=%i)", (int)target, count);
 
-  //  pilot_send(target, command, 4);
+  // power up flash 
+  flash_power_up(module_index);
+
+  flash_read(module_index, 0x07FF00, (char *)&count, sizeof(size_t));
+
+  if (count != -1) //flash is not empty
+  {
+    LOG_DEBUG("reading bitstream (size: %i)", (int)count);
+
+    while (addr < count)
+    {
+      chunk = (addr + 256) > count ? count-addr : 256;
+      flash_read(module_index, addr, buffer, chunk);
+      addr += chunk;
+
+      #ifdef DEBUG
+        printk("%i", chunk);
+      #endif
+
+      if (!seq_write(file, buffer, chunk))
+      {
+        LOG_DEBUG("Error calling seq_write");
+        return -EINVAL;
+      }
+    }
+    #ifdef DEBUG
+    printk("\n");
+    #endif
+
+  }
   return 0;
 }
+*/
 
 static int pilot_fpga_proc_bitstream_open(struct inode *inode, struct file *file)
 {
   module_slot_t slot = (int)PDE_DATA(file->f_inode);
 
   LOG_DEBUG("called pilot_fpga_proc_bitstream_open() for slot %i", (int)slot);
+  m_internals.modules[slot].bitstream_size = 0;
+  m_internals.modules[slot].bitstream_pos = 0;
 
-//TODO CHANGE BACK TO RESET
-  if (!pilot_fpga_try_get_fpga_state(slot, m_internals.timeout, SELECT_CHIP, NO_RESET))
+  if (!pilot_fpga_try_get_fpga_state(slot, m_internals.timeout, IGNORE, IN_RESET))
     return -EINVAL;
 
-  return single_open(file, pilot_fpga_proc_bitstream_show, PDE_DATA(inode));
+  //return single_open(file, pilot_fpga_proc_bitstream_show, PDE_DATA(inode));
+  return 0;
 }
 
 static int pilot_fpga_proc_bitstream_flush(struct file *file, fl_owner_t id)
@@ -109,50 +167,41 @@ static int pilot_fpga_proc_bitstream_flush(struct file *file, fl_owner_t id)
 
 static int pilot_fpga_proc_bitstream_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
-  int addr = 0;
-  uint8_t command[4] = { 0x02, (uint8_t)(addr >> 16), (uint8_t)(addr >> 8), (uint8_t)addr };
-  int bytes_written = 0, blocksize, sendbuffersize;
+  int addr = 0, blocksize, bytes_written = 0;
+  
   int module_index = (int)PDE_DATA(file->f_inode);
   target_t target = target_t_from_module_slot_and_port(module_index, module_port_1);
 
   LOG_DEBUG("called pilot_fpga_proc_bitstream_write(target: %i, count=%i, off=%i)", (int)target, count, (int)*off);
 
+  flash_power_up(module_index);
+  /* FLASH WRITE ENABLE */
+  flash_write_enable(module_index);
+
+  LOG_DEBUG("erasing flash...");
+  /* FLASH BULK ERASE */
+  flash_bulk_erase(module_index);
+
+  while(flash_busy(module_index))
+    msleep_interruptible(100);
+  LOG_DEBUG("flash ready after erase.");
+
   //LOG_DEBUG("pilot_tty_write(count=%i) called", count);
   //spin_lock(&_internals_lock);
 
-    pilot_send(target, command, 4);
 
     while (bytes_written < count)
     {
-      /* wait for the stm buffer to become available */
-      while (pilot_get_stm_bufferstate() == stm_bufferstate_full)
-        cpu_relax();
+      target = target_t_from_module_slot_and_port(module_index, module_port_1); //write, no return data
+      blocksize = (count - bytes_written) > 256 ? 256 : (count - bytes_written); /* sent the remaining bytes */
 
-      /* wait for the internal sendbuffer to become available again */
-      while ((sendbuffersize = pilot_get_free_send_buffer_size(target)) <= QUEUE_SIZE/2)
-        cpu_relax();
+      flash_prog(module_index, addr, (char *)(buf+bytes_written), blocksize);
 
-      blocksize = count - bytes_written; /* sent the remaining bytes */
-      if (blocksize > sendbuffersize)    /* ...but not more than the remaining sendbuffersize */
-        blocksize = sendbuffersize;
-
-      if (bytes_written + blocksize == count) //last block
-      {
-        LOG_DEBUG("bitstream_write() sending %i bytes (LAST)", blocksize);
-        if (blocksize > 1)
-          pilot_send(target, buf+bytes_written, blocksize-1); /* send the bytes */
-
-        LOG_DEBUG("bitstream_write() final byte to target %i", target);
-        pilot_send(target | 0x80, buf+bytes_written+blocksize-1, 1); /* send the bytes */
-      }
-      else
-      {
-        LOG_DEBUG("bitstream_write() sending %i bytes", blocksize);
-        pilot_send(target, buf+bytes_written, blocksize); /* send the bytes */
-      }
+      addr += 256;
       bytes_written += blocksize; /* increment the number of bytes written */
-      m_internals.recv_buf_index = 0; //TODO temporary, while module_port_2
     }
+
+    flash_prog(module_index, 0x07FF00, (char *)&count, sizeof(size_t));
 
   if (!pilot_fpga_try_get_fpga_state(module_index, 1000, UNSELECT_CHIP, NO_RESET))
      return -EINVAL;
@@ -169,14 +218,16 @@ static int pilot_fpga_proc_bitstream_release(struct inode *inode, struct file *f
 
   //pilot_fpga_try_get_fpga_state(slot, m_internals.timeout, UNSELECT_CHIP, IN_RESET); //change to NO_RESET when hardware ready
 
-  return single_release(inode, file);
+  //return single_release(inode, file);
+  return 0;
 }
 
 /* file operations for /proc/pilot/moduleX/bitstream */
 static const struct file_operations proc_bitstream_fops = {
   .owner   = THIS_MODULE,
   .open    = pilot_fpga_proc_bitstream_open,
-  .read    = seq_read,
+  //.read    = seq_read,
+  .read    = pilot_fpga_proc_bitstream_read,
   .llseek  = seq_lseek,
   .release = pilot_fpga_proc_bitstream_release,
   .write   = pilot_fpga_proc_bitstream_write,
@@ -291,7 +342,7 @@ static void pilot_fpga_proc_deinit(int slot)
 static void pilot_fpga_callback_recv(module_slot_t slot, module_port_t port, spidata_t data)
 {
   LOG_DEBUGALL("pilot_fpga_callback_recv(), slot: %i, data: %i", (int)slot, (int)(data & 0xFF));
-
+  mb();
   if (m_internals.recv_buf_index + 1 < RECEIVEBUFFER_SIZE)
   {
     m_internals.recv_buf[m_internals.recv_buf_index++] = data & 0xFF;
@@ -405,7 +456,8 @@ static void __exit pilot_fpga_exit(void)
     pilot_unregister_driver(m_internals.driver_id);
 
   /* unregister with the base driver */
-  if (m_internals.is_cmd_handler_registered) {
+  if (m_internals.is_cmd_handler_registered) 
+  {
     if (pilot_unregister_cmd_handler(&pilot_cmd_handler) == SUCCESS)
       m_internals.is_cmd_handler_registered = 0;
   }

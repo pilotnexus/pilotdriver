@@ -92,7 +92,6 @@ typedef enum
   target_base_reserved = 0x73,
   target_base_crc      = 0x74,
   target_base_data     = 0x75
-
 } target_t;
 
 #define pilot_cmd_t_data_size 512
