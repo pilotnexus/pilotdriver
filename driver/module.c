@@ -500,7 +500,7 @@ static irqreturn_t rpc_irq_data_m2r_handler(int irq, void* dev_id)
 //static void rpc_irq_data_m2r_work_queue_handler(struct work_struct* args)
 static void rpc_irq_data_m2r_work_queue_handler(unsigned long data)
 {
-  LOG_DEBUGALL("rpc_irq_data_m2r_work_queue_handler() called");
+  //LOG_DEBUG("rpc_irq_data_m2r_work_queue_handler() called");
 
   /* start the spi transmission */
   //if (mutex_trylock(&spi_transmit_lock) > 0)
@@ -509,6 +509,7 @@ static void rpc_irq_data_m2r_work_queue_handler(unsigned long data)
     rpc_spi0_transmit(_internals.Spi0, MAX_SPI_DATAEXCHANGE_BYTES_IN_IRQ);
   //  mutex_unlock(&spi_transmit_lock);
   //}
+  //LOG_DEBUG("rpc_irq_data_m2r_work_queue_handler() done");
 }
 
 // ****************** START SPI specific functions ************************
@@ -567,7 +568,7 @@ static void rpc_spi0_transmit(volatile unsigned int* spi0, int max_data_per_irq)
   start_spi_us = ktime_to_us(ktime_get());
   while (1)
   {
-    if (!queue_is_empty(&_internals.TxQueue) || _internals.pilot_recv_buffer_full || (GPIO_GET(DATA_M2R) && (data_count++ <= max_data_per_irq)))
+    if ((!queue_is_empty(&_internals.TxQueue) || _internals.pilot_recv_buffer_full || (GPIO_GET(DATA_M2R))) && (data_count++ <= max_data_per_irq))
     {
       if (queue_get_room(&_internals.RxQueue) > 0)
       {
