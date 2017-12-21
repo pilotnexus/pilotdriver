@@ -5,7 +5,6 @@
 #define DRIVERS_COUNT MODULES_COUNT
 
 // includes
-#include "platform.h"
 #include "module.h"          // include defines that describe the module
 #include "common.h"          // common defines for logging
 #include "types.h"
@@ -27,6 +26,18 @@
 #include <linux/spinlock.h>  // needed for spinlock_t and it's functions
 #include <linux/kthread.h>   // kthread_run()
 #include <linux/ktime.h>     //ktime support
+#include <linux/spi/spi.h>   //  needed for SPI interface
+#include <linux/workqueue.h>  //needed for workqueue
+
+#ifdef USE_SWAIT_QUEUE
+#include <linux/swait.h>
+#else
+#include <linux/wait.h>
+#endif
+
+#include <linux/gpio.h> 
+#include <linux/of.h> 
+#include <linux/of_gpio.h> 
 
 // forward declaration of pilot private functions
 static int  __init rpc_init(void);
@@ -34,30 +45,15 @@ static void __exit rpc_exit(void);
 
 static void pilot_internals_init(void);
 
-static int                    rpc_gpio_init    (gpio_config_t* gpios, int count);
-static void                   rpc_gpio_deinit  (gpio_config_t* gpios, int count);
-static void                   rpc_gpio_init_alt(int gpio, int alt);
-volatile static unsigned int* rpc_gpio_mmap_get(void);
-volatile static unsigned int* rpc_gpio_mmap_set(void);
-volatile static unsigned int* rpc_gpio_mmap_clr(void);
-static void                   rpc_gpio_mmap_free(volatile unsigned int* p);
-static void                   rpc_gpio_log_inputs(gpio_config_t* gpios, int count);
-
-volatile static unsigned int* rpc_spi0_init_mem(void);
-static void                   rpc_spi0_deinit_mem(volatile unsigned int* spi);
-static void                   rpc_spi0_enable(volatile unsigned int* spi);
-static void                   rpc_spi0_reset(volatile unsigned int* spi, int spiclk);
-static spidata_t              rpc_spi0_dataexchange(volatile unsigned int* spi, spidata_t mosi);
-
-static void                   rpc_spi0_transmit(volatile unsigned int* spi, int max_data_per_irq);
 static void                   rpc_spi0_handle_received_data(spidata_t miso);
 
 static int         rpc_irq_data_m2r_init (int gpio);
 static void        rpc_irq_data_m2r_deinit(int irq);
 static irqreturn_t rpc_irq_data_m2r_handler(int irq, void* dev_id);
 
+//static void       spi_complete(void *context);
 //static void        rpc_irq_data_m2r_work_queue_handler(struct work_struct *work); /* workqueue definition */
-static void        rpc_irq_data_m2r_work_queue_handler(unsigned long data); /* tasklet definition */
+//static void        rpc_irq_data_m2r_work_queue_handler(unsigned long data); /* tasklet definition */
 
 static void rpc_proc_init(void);
 static void rpc_proc_deinit(void);
@@ -69,6 +65,8 @@ static int pilot_handle_module_assignment(module_slot_t slot, const pilot_module
 static void rpc_unregister_driver(driver_t* driver);
 static void rpc_unassign_slot(module_slot_t slot);
 
+static int pilot_comm_task(void *vp);
+
 #define MAX_SPI_DATAEXCHANGE_BYTES_IN_IRQ 200
 #define MAX_SPI_DATAEXCHANGE_BYTES_IN_THREAD 1000
 
@@ -77,20 +75,18 @@ u64 start_spi_us, end_spi_us, average_us = 10000000;
 uint32_t average_spi_load;
 
 struct task_struct *pilot_receive_thread;
-static int stop_receive_thread = 0;
-DECLARE_WAIT_QUEUE_HEAD(data_received_wait_queue);
+struct task_struct *pilot_comm_thread;
 
-static DEFINE_MUTEX(spi_transmit_lock);
+static int stop_threads = 0;
+
+DEF_WQ_HEAD(data_received_wait_queue);
+DEF_WQ_HEAD(comm_wait_queue);
+
+//static DEFINE_MUTEX(spi_transmit_lock);
+//static DEFINE_SPINLOCK(spi_txrx_lock);
+//unsigned long spi_txrx_lock_flags;
 
 static internals_t _internals; /* holds all private fields */
-
-static gpio_config_t _internals_gpio[] = {
-  {9, GPIO_MODE_ALT},  // SPI_MISO
-  {10, GPIO_MODE_ALT}, // SPI_MOSI
-  {11, GPIO_MODE_ALT}, // SPI_SCLK
-  {8, GPIO_MODE_ALT }, // SPI_CS
-  {DATA_M2R, GPIO_MODE_INPUT}
-};
 
 //static struct workqueue_struct *comm_wq;
 
@@ -98,7 +94,7 @@ static gpio_config_t _internals_gpio[] = {
 //static DECLARE_WORK(_internals_irq_data_m2r_work, rpc_irq_data_m2r_work_queue_handler);
 
 /* tasklet */
-DECLARE_TASKLET( _internals_irq_data_m2r_tasklet, rpc_irq_data_m2r_work_queue_handler, (unsigned long) 0 );
+//DECLARE_TASKLET( _internals_irq_data_m2r_tasklet, rpc_irq_data_m2r_work_queue_handler, (unsigned long) 0 );
 
 /* spinlock to secure the spi data transfer */
 //static spinlock_t QueueLock;
@@ -143,9 +139,6 @@ static uint crc(const char *data, int len)
   return crc;
 }
 
-/* count of gpio configurations */
-static int _internals_gpio_count = sizeof(_internals_gpio) / sizeof(gpio_config_t);
-
 /* declare the file operations for the /proc/pilot/ files - the initialization is done after after the necessary functions are defined */
 static const struct file_operations proc_pilot_spiclk_fops,
                                     proc_pilot_stats_fops,
@@ -165,14 +158,202 @@ module_init(rpc_init);
 /* module exit point function, gets called when unloading the module */
 module_exit(rpc_exit);
 
+static int32_t pilot_spi_probe(struct spi_device * spi)
+{
+  struct device_node *np = spi->dev.of_node;
+  uint32_t ret;
+
+  if (spi->chip_select == 0)
+  {
+    LOG_DEBUG("pilot_spi_probe() for CS0 called");
+    //spi->modalias = "pilot-device-driver";
+    spi->mode = SPI_MODE_0;
+    spi->max_speed_hz = 10000000; //todo - get from devicetree
+    spi->bits_per_word = 8;
+    spi->chip_select = 0;
+
+   ret=spi_setup(spi);
+    dev_info(&spi->dev,
+          "default setup (%d): cs %d (cs_gpio=%d): %d Hz: bpw %u, mode 0x%x\n",
+    ret, spi->chip_select, spi->cs_gpio, spi->max_speed_hz, spi->bits_per_word,
+    spi->mode);
+
+    _internals.spi0 = spi;
+
+    _internals.spi_xfer.tx_buf = &_internals.send;
+    _internals.spi_xfer.rx_buf = &_internals.recv,
+    _internals.spi_xfer.len = 2;
+    _internals.spi_xfer.speed_hz = 1000000; //todo - get from devicetree
+
+    if (np)
+    {
+      _internals.data_m2r_gpio = of_get_named_gpio(np, "data_m2r-gpios", 0);
+      if (gpio_is_valid(_internals.data_m2r_gpio))
+      {
+        LOG_DEBUG("mr2 gpio=%d valid", _internals.data_m2r_gpio);
+        ret = devm_gpio_request_one(&spi->dev, _internals.data_m2r_gpio, GPIOF_IN, "data_m2r");
+        if (ret)
+        {
+          LOG(KERN_ERR, "Failed to request GPIO (%d): error %d", _internals.data_m2r_gpio, ret);
+        }
+        else
+        {
+          LOG_DEBUG("Request GPIO (%d) successful", _internals.data_m2r_gpio);
+
+            /* install the irq handler */
+          _internals.irq_data_m2r = rpc_irq_data_m2r_init(_internals.data_m2r_gpio);
+        }
+      }
+    }
+
+    //spi setup completed, start communication thread
+    pilot_comm_thread = kthread_run(pilot_comm_task, NULL, "K_PILOT_COMM_TASK");
+
+  }
+
+
+  return 0;
+}
+
+static int32_t pilot_spi_remove(struct spi_device * spi)
+{
+  if (spi->chip_select == 0)
+  {
+    LOG_DEBUG("pilot_spi_remove() for CS0 called");
+
+    // free the irq again
+    rpc_irq_data_m2r_deinit(_internals.irq_data_m2r);
+
+    // free the gpios
+    devm_gpio_free(&_internals.spi0->dev, _internals.data_m2r_gpio);
+  }
+
+  return 0;
+}
+
+static struct spi_driver pilot_spi_driver = {
+  .driver = 
+  {
+    .name = "pilot",
+    .owner = THIS_MODULE
+  },
+  .probe = pilot_spi_probe,
+  .remove = pilot_spi_remove
+};
+
 /* initialize the internal members */
 static void pilot_internals_init()
 {
   /* initialize the cmd handler list */
   INIT_LIST_HEAD(&_internals.list_cmd_handler);
 
+  INIT_WQ_HEAD(_internals.test_result_is_updated_wq);
+  INIT_WQ_HEAD(_internals.uid_is_updated_wq);
+
   start_spi_us = end_spi_us = ktime_to_us(ktime_get());
-  _internals.spiclk = 250;
+  _internals.spiclk = 4000000;
+}
+
+#define TARGET_INVALID_BLOCK_SIZE 12
+static int pilot_comm_task(void *vp)
+{
+  static spidata_t target_invalid_block[TARGET_INVALID_BLOCK_SIZE] = { [ 0 ... TARGET_INVALID_BLOCK_SIZE-1 ] = target_invalid};
+  int max_rx_len = 0;
+  int is_invalid_block_transmit = 0;
+
+  LOG_DEBUG("communication thread started");
+
+  while (1)
+  {
+    //todo - checks are currently duplicated in rpc_spi0_transmit()
+    if (WAIT_EVENT_INTERRUPTIBLE(comm_wait_queue, !queue_is_empty(&_internals.TxQueue) || gpio_get_value(_internals.data_m2r_gpio) || stop_threads == 1))
+    {
+      LOG_DEBUG("communication thread interrupted");
+      return 1; //interrupted
+    }
+
+    if (stop_threads == 1)
+      return 0; 
+
+
+    LOG_DEBUGALL("spi_sync (m2r=%d, tx-queue-empty=%d, rx-queue-room=%d, pilot-recv-buffer-full=%d)", 
+    gpio_get_value(_internals.data_m2r_gpio), 
+    queue_is_empty(&_internals.TxQueue),
+    queue_get_room(&_internals.RxQueue),
+     _internals.pilot_recv_buffer_full);
+
+    while ((!queue_is_empty(&_internals.TxQueue) || _internals.pilot_recv_buffer_full || (gpio_get_value(_internals.data_m2r_gpio))))
+    {    
+      if (queue_get_room(&_internals.RxQueue) > 0)
+      {
+        /* get the next data to send */
+        /*
+        if (_internals.pilot_recv_buffer_full)
+          _internals.send = (target_invalid << 8);
+        else if ((data_available = queue_dequeue(&_internals.TxQueue, &_internals.send)) == 0)
+          _internals.send = (target_invalid << 8);
+        */
+
+        spi_message_init(&_internals.spi_message);
+
+        if (queue_is_empty(&_internals.TxQueue))
+        {  //transmit invalid target blocks, we just need the received data
+          _internals.spi_xfer.tx_buf = target_invalid_block;
+          _internals.spi_xfer.len = TARGET_INVALID_BLOCK_SIZE;
+          is_invalid_block_transmit = 1;
+          LOG_DEBUGALL("transmitting %d invalid blocks to receive data", TARGET_INVALID_BLOCK_SIZE);
+        }
+        else
+        {
+          is_invalid_block_transmit = 0;
+          _internals.spi_xfer.len = queue_read_seq_block(&_internals.TxQueue, (void**)&_internals.spi_xfer.tx_buf);
+          LOG_DEBUGALL("transmitting %d bytes in TxQueue starting from %d (write is %d)", _internals.spi_xfer.len, _internals.TxQueue.read,  _internals.TxQueue.write);
+        }
+
+        max_rx_len = queue_write_seq_block(&_internals.RxQueue, (void**)&_internals.spi_xfer.rx_buf);
+
+        if (max_rx_len < _internals.spi_xfer.len)
+        {
+          _internals.spi_xfer.len = max_rx_len;
+        }
+        LOG_DEBUGALL("adjusting txrx bytes to %d bytes in RxQueue starting from %d", _internals.spi_xfer.len, _internals.RxQueue.write);          
+
+        //_internals.spi_xfer.len = 2;
+        //_internals.spi_xfer.tx_buf = &_internals.send;
+        //_internals.spi_xfer.rx_buf = &_internals.recv,
+
+        if (_internals.spi_xfer.len > 0)
+        {
+          //TODO - check if spi_sync fails and act how?
+          spi_message_add_tail(&_internals.spi_xfer, &_internals.spi_message);
+          spi_sync(_internals.spi0, &_internals.spi_message);
+
+          if (is_invalid_block_transmit == 0)
+          { //we did not use the TxQueue, to not advance pointer!
+            queue_skip_read_block(&_internals.TxQueue, _internals.spi_xfer.len);
+          }
+
+          queue_skip_write_block(&_internals.RxQueue, _internals.spi_xfer.len);
+          LOG_DEBUGALL("Done transmitting, adjusted TxQueue to %d and RxQueue to %d", _internals.TxQueue.read, _internals.RxQueue.write);          
+
+          //signal data received thread to process data
+          WAIT_WAKEUP(data_received_wait_queue);
+
+          /*
+          if ((_internals.recv & 0x0080) || _internals.recv == 0xFFFF) //pilot receive buffer full bit set (and the target byte is not 0xFF which occurs when MISO is always high)
+            _internals.pilot_recv_buffer_full = true;
+          else
+            _internals.pilot_recv_buffer_full = false;
+          */
+          //queue_enqueue(&_internals.RxQueue, _internals.recv);
+
+          //LOG_DEBUGALL("spi_sync done (tx=%x rx=%x)", _internals.send, _internals.recv); 
+
+          //_internals.stats.sent_byte_count[(_internals.send >> 8)]++;
+        }
+      }
+    }
+  }
 }
 
 static int pilot_receive_task(void *vp)
@@ -183,13 +364,13 @@ static int pilot_receive_task(void *vp)
 
   while (1)
   {
-    if (wait_event_interruptible_timeout(data_received_wait_queue, !queue_is_empty(&_internals.RxQueue) || stop_receive_thread == 1,  (200 * HZ / 1000)) == -ERESTARTSYS)
+    if (WAIT_EVENT_INTERRUPTIBLE_TIMEOUT(data_received_wait_queue, !queue_is_empty(&_internals.RxQueue) || stop_threads == 1,  (200 * HZ / 1000)) == -ERESTARTSYS)
     {
       LOG_DEBUG("receive thread interrupted");
       return 1; //interrupted
     }
 
-    if (stop_receive_thread == 1)
+    if (stop_threads == 1)
       return 0;
 
     while (queue_dequeue(&_internals.RxQueue, &recv) == 1)
@@ -205,6 +386,9 @@ static int __init rpc_init(void)
   int i, retValue = SUCCESS;
   LOG_DEBUG("pilot_init()");
   
+  INIT_WQ_HEAD(data_received_wait_queue);
+  INIT_WQ_HEAD(comm_wait_queue);
+
   pilot_receive_thread = kthread_run(pilot_receive_task, NULL, "K_PILOT_RECV_TASK");
 
   pilot_internals_init();
@@ -213,43 +397,17 @@ static int __init rpc_init(void)
   for (i = 0; i < DRIVERS_COUNT; i++)
     _internals.drivers[i].id = i+1;
 
-  /* initialize the gpios */
-  if (rpc_gpio_init( _internals_gpio, _internals_gpio_count ) != SUCCESS) {
 
-    /* if allocation fails, release all acquired gpios again */
-    rpc_gpio_deinit(_internals_gpio, _internals_gpio_count );
-
-    LOG(KERN_ERR, "rpc_gpio_init() failed");
-    retValue = -1;
-  }
-  else {
-    LOG_DEBUG("rpc_gpio_init() succeeded");
-
-    // memory map the Spi0  
-    _internals.Spi0 = rpc_spi0_init_mem();
+  /* SPI init */  
+  spi_register_driver(&pilot_spi_driver);
 
     // init the /proc/XXX files
-    rpc_proc_init();
+  LOG_DEBUG("rpc_proc_init()");
+  rpc_proc_init();
 
-    // memory map the gpios for faster access
-    _internals.GpioGet = rpc_gpio_mmap_get();
-    _internals.GpioSet = rpc_gpio_mmap_set();
-    _internals.GpioClr = rpc_gpio_mmap_clr();
-
-    // log gpio input state
-    rpc_gpio_log_inputs( _internals_gpio, _internals_gpio_count );
-
-    // reset the spi
-    rpc_spi0_reset(_internals.Spi0, _internals.spiclk);
-
-    // enable CS
-    rpc_spi0_enable(_internals.Spi0);
-
-    /* install the irq handler */
-    _internals.irq_data_m2r = rpc_irq_data_m2r_init(DATA_M2R);
 
     LOG_DEBUG("initialization complete");
-  }
+
 
   return retValue;
 }
@@ -261,198 +419,25 @@ static void __exit rpc_exit(void)
   
   if (pilot_receive_thread) 
   {
-    LOG_DEBUG("Trying to stop receive thread...");
+    LOG_DEBUG("Trying to stop threads...");
     //try to end thread
-    stop_receive_thread = 1;
-    wake_up_interruptible(&data_received_wait_queue);
+    stop_threads = 1;
+    WAIT_WAKEUP(data_received_wait_queue);
+    WAIT_WAKEUP(comm_wait_queue);
     kthread_stop(pilot_receive_thread);
+    kthread_stop(pilot_comm_thread);
 
     pilot_receive_thread = NULL;
-    LOG_DEBUG("Receive thread stopped.");
+    LOG_DEBUG("Threads stopped.");
   }
-  
-  // free the Spi0 memory mapping
-  rpc_spi0_deinit_mem(_internals.Spi0);
-
-  // free the irq again
-  rpc_irq_data_m2r_deinit(_internals.irq_data_m2r);
-
-  // free the gpios
-  rpc_gpio_deinit(_internals_gpio, _internals_gpio_count);
 
   // free /proc/XXX files
   rpc_proc_deinit();
+  
+  spi_unregister_driver(&pilot_spi_driver);
 
   LOG_DEBUG("Goodbye!");
 }
-
-// ************* START GPIO specific functions ******************
-
-/* request the gpios from the supplied configuration and calls rpc_gpio_init_alt() for them */
-static int rpc_gpio_init(gpio_config_t* gpios, int count)
-{
-  int i, ret = SUCCESS;
-
-  LOG_DEBUG ( "rpc_gpio_init() called with %i gpios", count );
-
-  for (i = 0; i < count; i++)
-  {
-    if ( gpio_request_one( gpios[i].gpio, GPIOF_IN, "SPI" ) == 0 )
-    {
-      gpios[i].gpio_is_requested = 1; // mark the gpio as successfully requested
-      LOG_DEBUG( "gpio_request_one(%i) succeeded", gpios[i].gpio);
-
-      switch (gpios[i].gpio_mode) {
-
-        case GPIO_MODE_INPUT:
-          LOG_DEBUG( "setting gpio %i as input", gpios[i].gpio);
-          if (gpio_direction_input(gpios[i].gpio) != SUCCESS)
-            LOG(KERN_ERR, "gpio_direction_input(%i) failed", gpios[i].gpio);
-          else
-            LOG_DEBUG("gpio_direction_input(%i) succeeded", gpios[i].gpio);
-          break;
-
-        case GPIO_MODE_OUTPUT:
-          LOG_DEBUG( "setting gpio %i as output", gpios[i].gpio);
-
-          if (gpio_direction_output(gpios[i].gpio, 0) != SUCCESS)
-            LOG(KERN_ERR, "gpio_direction_output(%i) failed", gpios[i].gpio);
-          else {
-            LOG_DEBUG("gpio_direction_output(%i) succeeded", gpios[i].gpio);
-          }
-          break;
-
-        case GPIO_MODE_ALT:
-            // set the alternative function according
-          LOG_DEBUG( "setting gpio alt for gpio=%i and alt=%i", gpios[i].gpio, gpios[i].gpio_alternative);
-          rpc_gpio_init_alt( gpios[i].gpio, gpios[i].gpio_alternative );        
-          break;
-      }
-      
-      
-    }
-    else {
-      LOG( KERN_ERR, "gpio_request_one(%i) failed", gpios[i].gpio );
-      ret--;
-    }
-  }
-
-  if ( ret == SUCCESS )
-    LOG_DEBUG( "rpc_gpio_init() returned successfully" );
-
-  return ret;
-}
-
-/* frees the allocated gpios specified in the supplied configuration */
-static void rpc_gpio_deinit(gpio_config_t* gpios, int count)
-{
-  int i;
-  
-  LOG_DEBUG( "rpc_gpio_deinit() called" );
-
-  // reset the gpio
-  //GPIO_CLR(INT_R2M);
-
-  // free the memory mapped gpio again
-  //rpc_gpio_mmap_free(_internals.p_gpioirq);
-  rpc_gpio_mmap_free(_internals.GpioGet);
-  rpc_gpio_mmap_free(_internals.GpioSet);
-  rpc_gpio_mmap_free(_internals.GpioClr);
-
-  // frees all gpios that we successfully requested  
-  for (i = 0; i < count; i++)
-  {
-    if ( gpios[i].gpio_is_requested ) 
-    {
-      LOG_DEBUG( "Freeing gpio %i", gpios[i].gpio );
-      gpio_free( gpios[i].gpio );
-      gpios[i].gpio_is_requested = 0;
-    }
-  }
-}
-
-/* sets the supplied alternative configuration for the gpio */
-static void rpc_gpio_init_alt(int gpio, int alt)
-{
-  volatile unsigned int* p;
-  int address;
-  
-  LOG_DEBUG( "rpc_gpio_init_alt(gpio=%i, alt=%i) called", gpio, alt);
-  
-  // calc the memory address for manipulating the gpio
-  //address = GPIO_BASE + (4 * (gpio / 10) );
-  address = GPIO_BASE + (4 * (gpio / 10) );
-
-  // map the gpio into kernel memory
-  p = ioremap(address, 4);
-
-  // if the mapping was successful
-  if (p != NULL) {
-    
-    LOG_DEBUG ( "ioremap returned %X", (int)p );
-
-    // set the gpio to the alternative mapping
-    (*p) |= (((alt) <= 3 ? (alt) + 4 : (alt) == 4 ? 3 : 2) << (((gpio)%10)*3));
-
-    // free the gpio mapping again
-    iounmap(p);
-  }
-}
-
-/* logs the current state of the inputs if in debug mode */
-static void rpc_gpio_log_inputs(gpio_config_t* gpios, int count)
-{
-  int i;
-  for (i = 0; i < count; i++)
-  {
-    if (gpios[i].gpio_mode == GPIO_MODE_INPUT) {
-      LOG_DEBUG("gpio(%i): %i", gpios[i].gpio, GPIO_GET(gpios[i].gpio));
-    }
-  }
-}
-
-/* memory maps the gpio for faster access  */
-volatile static unsigned int* rpc_gpio_mmap(int address)
-{
-  volatile unsigned int* p;
-
-  LOG_DEBUG("rpc_gpio_mmap() called");
-
-  // map the gpio address into kernel memory
-  p = ioremap(address, 4);
-
-  if (p == NULL ){
-    LOG(KERN_ERR, "ioremap(%X) failed", address);
-  }
-  LOG_DEBUG("ioremap(%X) returned %X", address, (int)p);
-
-  return p;
-}
-
-/* address for gpio inputs */
-volatile static unsigned int* rpc_gpio_mmap_get()
-{  
-  return rpc_gpio_mmap(GPIO_BASE + (4 * 13));
-}
-
-volatile static unsigned int* rpc_gpio_mmap_set()
-{
-  return rpc_gpio_mmap(GPIO_BASE + (4 * 7));
-}
-
-volatile static unsigned int* rpc_gpio_mmap_clr()
-{
-  return rpc_gpio_mmap(GPIO_BASE + (4 * 10));
-}
-
-static void rpc_gpio_mmap_free(volatile unsigned int* p) 
-{
-  LOG_DEBUG("rpc_gpio_mmap_free() called with %X", (int)p);
-  if (p != NULL) {
-    iounmap(p);
-  }
-}
-// *************** END GPIO specific functions *****************
 
 static int rpc_irq_data_m2r_init(int gpio)
 {
@@ -491,119 +476,13 @@ static void rpc_irq_data_m2r_deinit(int irq)
 /* description: gets invoked when the stm changes the DATA pin */
 static irqreturn_t rpc_irq_data_m2r_handler(int irq, void* dev_id)
 {
-	tasklet_schedule(&_internals_irq_data_m2r_tasklet);	
-  LOG_DEBUGALL("queue_work() for rpc_irq_data_m2r_handler() successful");
+  //tasklet_schedule(&_internals_irq_data_m2r_tasklet); 
+  //schedule_work(&_internals_irq_data_m2r_work);
+  LOG_DEBUGALL("M2R Interrupt called, waking up comm thread");
+  WAIT_WAKEUP(comm_wait_queue);
   return IRQ_HANDLED;
 }
 
-/* description: work queue handler is scheduled by the bottom half of the DATA_M2R interrupt */
-//static void rpc_irq_data_m2r_work_queue_handler(struct work_struct* args)
-static void rpc_irq_data_m2r_work_queue_handler(unsigned long data)
-{
-  //LOG_DEBUG("rpc_irq_data_m2r_work_queue_handler() called");
-
-  /* start the spi transmission */
-  //if (mutex_trylock(&spi_transmit_lock) > 0)
-  //{
-    mb();
-    rpc_spi0_transmit(_internals.Spi0, MAX_SPI_DATAEXCHANGE_BYTES_IN_IRQ);
-  //  mutex_unlock(&spi_transmit_lock);
-  //}
-  //LOG_DEBUG("rpc_irq_data_m2r_work_queue_handler() done");
-}
-
-// ****************** START SPI specific functions ************************
-
-/* map the physical memory that we need for spi0 access */
-volatile static unsigned int* rpc_spi0_init_mem(void)
-{
-  // in user space we would do mmap() call, in kernel space we do ioremap
-  // call ioremap to map the physical address to something we can use
-  unsigned int* p = ioremap(SPI0_BASE, 12);
-
-  LOG_DEBUG("ioremap(%X) returned %X", SPI0_BASE, (int)p);
-  LOG_DEBUG("spi0: %X spi0+1 %X spi0+2 %X", *p, *(p+1), *(p+2) );
-
-  return p;
-}
-
-/* frees the memory mapping for spi0 access */
-static void rpc_spi0_deinit_mem(volatile unsigned int* spi0)
-{
-  if (spi0 != NULL)
-    iounmap(spi0);
-}
-
-/* sets the clock speed and clears all FIFOs and Status bits */
-static void rpc_spi0_reset(volatile unsigned int* spi, int spiclk)
-{
-  /* SPI clock is calculated 250 MHz / divisor = clock, eg. 250 / 50 = 5 MHz */
-  //SPI0_CLKSPEED(spi) = 250;  /* 250 / 125 = 2 MHz, works for stm32f405 */
-  //SPI0_CLKSPEED(spi) = 64; 
-  //SPI0_CLKSPEED(spi) = 125;
-  SPI0_CLKSPEED(spi) = spiclk;
-
-  // clear FIFOs and all status bits
-  SPI0_CNTLSTAT(spi) = SPI0_CS_CLRALL;
-
-  // clear done bit
-  SPI0_CNTLSTAT(spi) = SPI0_CS_DONE;
-}
-
-static void rpc_spi0_enable(volatile unsigned int* spi0)
-{
-  // enable SPI interface
-  SPI0_CNTLSTAT(spi0) = SPI0_CS_CHIPSEL0;
-}
-
-static void rpc_spi0_transmit(volatile unsigned int* spi0, int max_data_per_irq)
-{
-  spidata_t recv, send;
-  int data_available;
-  int data_count = 0; /* guard against stuck DATA_M2R high pin! */
-  int old_end_spi_us;
-  //spin_lock( &QueueLock );
-
-  old_end_spi_us = end_spi_us;
-  start_spi_us = ktime_to_us(ktime_get());
-  while (1)
-  {
-    if ((!queue_is_empty(&_internals.TxQueue) || _internals.pilot_recv_buffer_full || (GPIO_GET(DATA_M2R))) && (data_count++ <= max_data_per_irq))
-    {
-      if (queue_get_room(&_internals.RxQueue) > 0)
-      {
-        /* get the next data to send */
-        if (_internals.pilot_recv_buffer_full)
-          send = (target_invalid << 8);
-        else if ((data_available = queue_dequeue(&_internals.TxQueue, &send)) == 0)
-          send = (target_invalid << 8);
-
-        recv = rpc_spi0_dataexchange(_internals.Spi0, send);
-
-        if (recv & 0x8000) /* pilot receive buffer full bit set */
-          _internals.pilot_recv_buffer_full = true;
-        else
-          _internals.pilot_recv_buffer_full = false;
-
-        queue_enqueue(&_internals.RxQueue, recv & 0x7FFF);
-        //LOG_DEBUGALL("rpc_spi0_transmit() enqueued received word %x", recv);
-        wake_up_interruptible(&data_received_wait_queue);
-
-        if (data_available)
-          _internals.stats.sent_byte_count[(send >> 8)]++;
-
-      }
-      else //no receive buffer free
-        break;
-    }
-    else
-      break;
-  }
-  end_spi_us = ktime_to_us(ktime_get());
-
-  LOG_DEBUGALL("rpc_spi0_transmit() done");
-  //spin_unlock(&QueueLock);
-}
 
 static void pilot_spi0_handle_received_base_cmd(pilot_cmd_t *cmd)
 {
@@ -706,6 +585,10 @@ static void pilot_spi0_handle_received_cmd_byte(target_t target, uint8_t data)
   int crcindex;
   uint8_t length_parity;
 
+#ifdef DEBUGALL
+  int i;
+#endif
+
   if (target == target_base)
   {
     /* ...reset the cmd */
@@ -775,12 +658,12 @@ static void pilot_spi0_handle_received_cmd_byte(target_t target, uint8_t data)
     LOG_DEBUGALL("pilot_received_cmd: target: %i, type: %i, data length: %u (CRC received: %X, own calculated CRC: %X)",(int) _internals.current_cmd.cmd.target,(int) _internals.current_cmd.cmd.type, _internals.current_cmd.length,_internals.current_cmd.cmd.crc, crc_check);
 
     #ifdef DEBUGALL
-      printk("     data: '");
+      printk("pilot data: '");
 
       for(i=0;i<_internals.current_cmd.length;i++)
-        printk("%x ", _internals.current_cmd.cmd.data[i]);
+        printk(KERN_CONT "%x ", _internals.current_cmd.cmd.data[i]);
 
-      printk("'\n");
+      printk(KERN_CONT "'\n");
     #endif
 
     /* reset the current cmd index */
@@ -807,6 +690,51 @@ static void pilot_spi0_handle_received_cmd_byte(target_t target, uint8_t data)
   }
 }
 
+#ifdef DEBUGALL
+static const char * target_to_string(target_t target)
+{
+  static const char* str_target_invalid       = "target_invalid"; 
+  static const char* str_target_module1_port1 = "target_module1_port1";
+  static const char* str_target_module1_port2 = "target_module1_port2";
+  static const char* str_target_module2_port1 = "target_module2_port1";
+  static const char* str_target_module2_port2 = "target_module2_port2";
+  static const char* str_target_module3_port1 = "target_module3_port1";
+  static const char* str_target_module3_port2 = "target_module3_port2";
+  static const char* str_target_module4_port1 = "target_module4_port1";
+  static const char* str_target_module4_port2 = "target_module4_port2";
+  static const char* str_target_plc_read      = "target_plc_read";
+  static const char* str_target_plc_write     = "target_plc_write";
+  static const char* str_target_base          = "target_base";
+  static const char* str_target_base_type     = "target_base_type";
+  static const char* str_target_base_length   = "target_base_length";
+  static const char* str_target_base_reserved = "target_base_reserved";
+  static const char* str_target_base_crc      = "target_base_crc";
+  static const char* str_target_base_data     = "target_base_data";
+
+  switch(target)
+  {
+    case target_invalid:       return str_target_invalid      ;
+    case target_module1_port1: return str_target_module1_port1;
+    case target_module1_port2: return str_target_module1_port2;
+    case target_module2_port1: return str_target_module2_port1;
+    case target_module2_port2: return str_target_module2_port2;
+    case target_module3_port1: return str_target_module3_port1;
+    case target_module3_port2: return str_target_module3_port2;
+    case target_module4_port1: return str_target_module4_port1;
+    case target_module4_port2: return str_target_module4_port2;
+    case target_plc_read:      return str_target_plc_read     ;
+    case target_plc_write:     return str_target_plc_write    ;
+    case target_base:          return str_target_base         ;
+    case target_base_type:     return str_target_base_type    ;
+    case target_base_length:   return str_target_base_length  ;
+    case target_base_reserved: return str_target_base_reserved;
+    case target_base_crc:      return str_target_base_crc     ;
+    case target_base_data:     return str_target_base_data    ;
+    default: return str_target_invalid;
+  }
+}
+#endif
+
 /* description: handles a received word from the spi */
 /* performance critical - enable inlining */
 static void rpc_spi0_handle_received_data(spidata_t miso)
@@ -817,8 +745,10 @@ static void rpc_spi0_handle_received_data(spidata_t miso)
 
   //LOG_DEBUG("rpc_spi0_handle_received_data(miso=%x)", miso);
 
-  target = (miso >> 8) & 0x7F;
-  data   = (miso & 0xFF);
+  target = (miso & 0xFF) & 0x7F;
+  data   = (miso >> 8);
+
+  //LOG_DEBUGALL("rpc_spi0_handle_received_data(target=%s, data=%x)", target_to_string(target), data);
 
   if (target >= target_base)
   {
@@ -840,45 +770,6 @@ static void rpc_spi0_handle_received_data(spidata_t miso)
   }
   else if (_internals.stream_callback.callbacks[target] != NULL) /* look for a registered stream target */
     _internals.stream_callback.callbacks[target](data);
-}
-
-/* description: spi data exchange sends / receives 8-bits over spi */
-/* performance critical - enable inlining */
-inline static spidata_t rpc_spi0_dataexchange(volatile unsigned int* spi0, 
-                                              spidata_t mosi)
-{
-  spidata_t miso;
-  u8 data1, data2;
-  int status;
-
-  data1 = mosi >> 8;
-  data2 = mosi & 0xFF;
-
-  // enable SPI interface
-  SPI0_CNTLSTAT(spi0) = SPI0_CS_CHIPSEL0 | SPI0_CS_ACTIVATE;
-
-  // send the data
-  SPI0_FIFO(spi0) = data1;
-  SPI0_FIFO(spi0) = data2;
-
-  // wait for the SPI to be ready
-  do {
-    status = SPI0_CNTLSTAT(spi0);
-  } while ((status & SPI0_CS_DONE) == 0);
-
-  SPI0_CNTLSTAT(spi0) = SPI0_CS_DONE;
-
-  // data should now be in the receiver
-  data1 = SPI0_FIFO(spi0);
-  data2 = SPI0_FIFO(spi0);
-
-  //LOG_INFO("d1: %X, d2: %X", data1, data2);
-
-  miso = ( (data1 << 8) | data2 );
-
-  LOG_DEBUGALL("send: %X, recv: %X", mosi, miso);
-
-  return miso;
 }
 
 // ******************* END SPI specific funtions ***************************
@@ -957,9 +848,17 @@ static void rpc_proc_init(void)
     /* create a read- and writeable proc entry for the eeprom fid */
     proc_create_data(pilot_proc_module_fid, 0666 /* r+w */, eeprom_dir, &proc_pilot_module_fid_fops, (void*)i);
 
+    INIT_WQ_HEAD(_internals.modules[i].type_is_updated_wq);
+    INIT_WQ_HEAD(_internals.modules[i].uid_is_updated_wq);
+    INIT_WQ_HEAD(_internals.modules[i].hid_is_updated_wq);
+    INIT_WQ_HEAD(_internals.modules[i].fid_is_updated_wq);
+
     /* create read- and writeable proc entries for user content */
     for (j = 0; j < EEPROM_USER_DATA_COUNT; j++)
+    {
+      INIT_WQ_HEAD(_internals.modules[i].user_is_updated_wq[j]);
       proc_create_data(pilot_proc_module_eeprom_user_names[j], 0666, eeprom_dir, &proc_pilot_module_eeprom_user_fops, (void*)PROC_USER_DATA_GET_INT(i,j));
+    }
   }
 }
 
@@ -1149,7 +1048,6 @@ static void pilot_set_module_eeprom_data(int module_index, int data_index, pilot
 static int pilot_try_get_module_type(int module_index, int timeout, pilot_module_type_t **type)
 {
   pilot_cmd_t cmd;
-  unsigned long timestamp;
   int is_timedout = 0;
 
   /* get the module type */
@@ -1166,23 +1064,16 @@ static int pilot_try_get_module_type(int module_index, int timeout, pilot_module
   cmd.type = pilot_cmd_type_module_type_get;
   pilot_send_cmd(&cmd);
 
-  /* pick a time that is timeout ms in the future */
-  timestamp = jiffies + (timeout * HZ / 1000);
-
   /* wait until the pilot_module_type is updated or the timeout occurs */
-  while (_internals.modules[module_index].type_is_updated == 0)
-    if (time_after(jiffies, timestamp))
-    {
-      is_timedout = 1;
-      break;
-    }
-
-  if (!is_timedout)
-    *type = module_type;
-  else
+  if (WAIT_EVENT_INTERRUPTIBLE_TIMEOUT(_internals.modules[module_index].type_is_updated_wq, _internals.modules[module_index].type_is_updated != 0, (timeout * HZ / 1000)) <= 0)
   {
+    is_timedout = 1;    
     LOG_INFO("pilot_try_get_module_type() timedout while waiting for module_type!");
     *type = NULL;
+  }
+  else
+  {
+    *type = module_type;
   }
 
   return is_timedout ? -1 : SUCCESS;
@@ -1191,7 +1082,6 @@ static int pilot_try_get_module_type(int module_index, int timeout, pilot_module
 static int pilot_try_get_module_uid(int module_index, int timeout, pilot_eeprom_uid_t **uid)
 {
   pilot_cmd_t cmd;
-  unsigned long timestamp;
   int timedout = 0;
   LOG_DEBUG("pilot_try_update_module_uid(module_index = %i, timeout = %i) called", module_index, timeout);
 
@@ -1206,21 +1096,16 @@ static int pilot_try_get_module_uid(int module_index, int timeout, pilot_eeprom_
   /* send the cmd */
   pilot_send_cmd(&cmd);
 
-  /* pick a time thats timeout ms in the future */
-  timestamp = jiffies + (timeout * HZ / 1000);
-
   /* wait until the uid is updated or the timeout occurs */
-  while (_internals.modules[module_index].uid_is_updated == 0)
-    if (time_after(jiffies, timestamp))
-    {
-      timedout = 1;
-      break;
-    }
-
-  if (!timedout)
-    *uid = &_internals.modules[module_index].uid;
-  else
+    if (WAIT_EVENT_INTERRUPTIBLE_TIMEOUT(_internals.modules[module_index].uid_is_updated_wq, _internals.modules[module_index].uid_is_updated != 0, (timeout * HZ / 1000)) <= 0)
+  {
+    timedout = 1;
     LOG_INFO("pilot_try_get_module_uid() timeout reached while waiting for uid!");
+  }
+  else
+  {
+    *uid = &_internals.modules[module_index].uid;
+  }
 
   return timedout ? -1 : SUCCESS;
 }
@@ -1228,7 +1113,6 @@ static int pilot_try_get_module_uid(int module_index, int timeout, pilot_eeprom_
 static int pilot_try_get_module_hid(int module_index, int timeout, pilot_eeprom_hid_t **hid)
 {
   pilot_cmd_t cmd;
-  unsigned long timestamp;
   int timedout = 0;
 
   /* clear the hid_is_updated flag for the module */
@@ -1242,21 +1126,16 @@ static int pilot_try_get_module_hid(int module_index, int timeout, pilot_eeprom_
   /* send the cmd */
   pilot_send_cmd(&cmd);
 
-  /* pick a  time thats timeout ms in the future */
-  timestamp = jiffies + (timeout * HZ / 1000);
-
   /* wait until the uid is updated or the timeout occurs */
-  while (_internals.modules[module_index].hid_is_updated == 0)
-    if (time_after(jiffies, timestamp))
-    {
-      timedout = 1;
-      break;
-    }
-
-  if (!timedout)
-    *hid = &_internals.modules[module_index].hid;
-  else
+  if (WAIT_EVENT_INTERRUPTIBLE_TIMEOUT(_internals.modules[module_index].hid_is_updated_wq, _internals.modules[module_index].hid_is_updated != 0, (timeout * HZ / 1000)) <= 0)
+  {
+    timedout = 1;
     LOG_INFO("pilot_try_get_module_hid() timeout reached while waiting for hid!");
+  }
+  else
+  {
+    *hid = &_internals.modules[module_index].hid;    
+  }
 
   return timedout ? -1 : SUCCESS;
 }
@@ -1264,7 +1143,6 @@ static int pilot_try_get_module_hid(int module_index, int timeout, pilot_eeprom_
 static int pilot_try_get_module_fid(int module_index, int timeout, pilot_eeprom_fid_t **fid)
 {
   pilot_cmd_t cmd;
-  unsigned long timestamp;
   int timedout = 0;
 
   /* clear the fid_is_updated flag for the module */
@@ -1278,21 +1156,16 @@ static int pilot_try_get_module_fid(int module_index, int timeout, pilot_eeprom_
   /* send the cmd */
   pilot_send_cmd(&cmd);
 
-  /* pick a  time thats timeout ms in the future */
-  timestamp = jiffies + (timeout * HZ / 1000);
-
   /* wait until the uid is updated or the timeout occurs */
-  while (_internals.modules[module_index].fid_is_updated == 0)
-    if (time_after(jiffies, timestamp))
-    {
-      timedout = 1;
-      break;
-    }
-
-  if (!timedout)
-    *fid = &_internals.modules[module_index].fid;
-  else
+  if (WAIT_EVENT_INTERRUPTIBLE_TIMEOUT(_internals.modules[module_index].fid_is_updated_wq, _internals.modules[module_index].fid_is_updated != 0, (timeout * HZ / 1000)) <= 0)
+  {
+    timedout = 1;
     LOG_INFO("pilot_try_get_module_fid() timeout reached while waiting for fid!");
+  }
+  else
+  {
+    *fid = &_internals.modules[module_index].fid;    
+  }
 
   return timedout ? -1 : SUCCESS;
 }
@@ -1300,7 +1173,6 @@ static int pilot_try_get_module_fid(int module_index, int timeout, pilot_eeprom_
 static int pilot_try_get_module_eeprom_data(int module_index, int user_data_index, int timeout, pilot_eeprom_data_t **data)
 {
   pilot_cmd_t cmd;
-  unsigned long timestamp;
   int timedout = 0;
 
   /* clear the is_updated flag for the module & data */
@@ -1315,21 +1187,16 @@ static int pilot_try_get_module_eeprom_data(int module_index, int user_data_inde
   /* send the cmd */
   pilot_send_cmd(&cmd);
 
-  /* pick a  time thats timeout ms in the future */
-  timestamp = jiffies + (timeout * HZ / 1000);
-
   /* wait until the data is updated of the timeout occurs */
-  while (_internals.modules[module_index].user_is_updated[user_data_index] ==  0)
-    if (time_after(jiffies, timestamp))
-    {
-      timedout = 1;
-      break;
-    }
-
-  if (!timedout)
-    *data = &_internals.modules[module_index].user[user_data_index];
-  else
+  if (WAIT_EVENT_INTERRUPTIBLE_TIMEOUT(_internals.modules[module_index].user_is_updated_wq[user_data_index], _internals.modules[module_index].user_is_updated[user_data_index] != 0, (timeout * HZ / 1000)) <= 0)
+  {
+    timedout = 1;
     LOG_INFO("pilot_try_get_module_eeprom_data() timeout reached while waiting for data!");
+  }
+  else
+  {
+    *data = &_internals.modules[module_index].user[user_data_index];    
+  }
 
   return timedout ? -1 : SUCCESS;
 }
@@ -1445,7 +1312,7 @@ static int pilot_proc_pilot_spiclk_show(struct seq_file *file, void *data)
 
 static int pilot_proc_pilot_spiclk_write(struct file* file, const char __user *buf, size_t count, loff_t *off)
 {
-  int new_value, ret;
+  int new_value, ret=-EINVAL;
 
   /* try to get an int value from the user */
   if (kstrtoint_from_user(buf, count, 10, &new_value) != SUCCESS)
@@ -1453,13 +1320,14 @@ static int pilot_proc_pilot_spiclk_write(struct file* file, const char __user *b
   else
   {
     /* sanity check the value before setting the spiclk */
-    if (new_value < 10 || new_value > 1000)
+    if (new_value < 10 || new_value > _internals.spi0->max_speed_hz)
       ret = -EINVAL;
     else
     {
       /* store the new spi clk value and reset the spi */
       _internals.spiclk = new_value;
-      rpc_spi0_reset(_internals.Spi0, _internals.spiclk);
+      _internals.spi_xfer.speed_hz = _internals.spiclk;
+
       ret = count;
     }
   }
@@ -1566,7 +1434,6 @@ static const struct file_operations proc_pilot_last_recv_cmd_fops = {
 static int pilot_try_get_test_result(int timeout, test_result_t *result)
 {
   pilot_cmd_t cmd;
-  unsigned long timestamp;
   int is_timedout = 0;
 
   LOG_DEBUG("pilot_try_get_test_result() called");
@@ -1580,23 +1447,17 @@ static int pilot_try_get_test_result(int timeout, test_result_t *result)
   cmd.type = pilot_cmd_type_test_run;
   pilot_send_cmd(&cmd);
 
-  /* pick a time that is timeout ms in the future */
-  timestamp = jiffies + (timeout * HZ / 1000);
-
   /* wait until the test_result is updated or the timeout occurs */
-  while (_internals.test_result_is_updated == 0)
-    if (time_after(jiffies, timestamp))
-    {
-      is_timedout = 1;
-      break;
-    }
-
-  if (!is_timedout)
-    *result = _internals.test_result;
-  else
+  if (WAIT_EVENT_INTERRUPTIBLE_TIMEOUT(_internals.test_result_is_updated_wq, _internals.test_result_is_updated != 0, (200 * HZ / 1000)) <= 0)
   {
+    is_timedout = 1;
     LOG_INFO("pilot_try_get_test_result() timedout while waiting for test result!");
   }
+  else
+  {
+     *result = _internals.test_result;   
+  }
+
   return is_timedout ? -1 : SUCCESS;
 }
 
@@ -1657,7 +1518,6 @@ static const struct file_operations proc_pilot_test_fops = {
 static int pilot_try_get_uid(int timeout, uint32_t *uid)
 {
   pilot_cmd_t cmd;
-  unsigned long timestamp;
   int is_timedout = 0;
 
   /* reset the uid_is_updated flag */
@@ -1669,23 +1529,17 @@ static int pilot_try_get_uid(int timeout, uint32_t *uid)
   cmd.type = pilot_cmd_type_eeprom_uid_get;
   pilot_send_cmd(&cmd);
 
-  /* pick a time that is timeout ms in the future */
-  timestamp = jiffies + (timeout * HZ / 1000);
-
   /* wait until the test_result is updated or the timeout occurs */
-  while (_internals.uid_is_updated == 0)
-    if (time_after(jiffies, timestamp))
-    {
-      is_timedout = 1;
-      break;
-    }
-
-  if (!is_timedout)
-    *uid = _internals.uid_is_updated;
-  else
+  if (WAIT_EVENT_INTERRUPTIBLE_TIMEOUT(_internals.uid_is_updated_wq, _internals.uid_is_updated != 0, (timeout * HZ / 1000)) <= 0)
   {
+    is_timedout = 1;
     LOG_INFO("pilot_try_get_uid() timedout while waiting for uid!");
   }
+  else
+  {
+    *uid = _internals.uid_is_updated;    
+  }
+
   return is_timedout ? -1 : SUCCESS;
 }
 
@@ -1964,7 +1818,7 @@ int pilot_try_send(target_t target, const char* data, int count)
   //spin_lock( &QueueLock );
 
   for (i = 0; i < count; i++)
-    if (queue_enqueue( &_internals.TxQueue, ( (int)target << 8 | data[i] ) ))
+    if (queue_enqueue( &_internals.TxQueue, ( (int)target | data[i]  << 8) ))
       ret++;
     else
       break;
@@ -1974,8 +1828,10 @@ int pilot_try_send(target_t target, const char* data, int count)
   /* start the spi transmission */
   LOG_DEBUGALL("queue_work() for _internals_irq_data_m2r_work()");
 
-  tasklet_schedule(&_internals_irq_data_m2r_tasklet);	
-  
+  //tasklet_schedule(&_internals_irq_data_m2r_tasklet);	
+  //schedule_work(&_internals_irq_data_m2r_work);
+  WAIT_WAKEUP(comm_wait_queue);
+
   LOG_DEBUGALL("work scheduled successfully");
 
   return ret;
@@ -2010,33 +1866,35 @@ void pilot_send_cmd(pilot_cmd_t* cmd)
   LOG_DEBUG("pilot_send_cmd: target: %x, type: %x, length: %i (0x%x), crc: %X",(int) cmd->target,(int) cmd->type, length, cmd->length, cmd->crc);
 
   #ifdef DEBUG
-    printk("     data: '");
+    printk(KERN_CONT "data: '");
 
     for(i=0;i< length;i++)
-      printk("%x ", cmd->data[i]);
+      printk(KERN_CONT "%x ", cmd->data[i]);
 
-    printk("'\n");
+    printk(KERN_CONT "'\n");
   #endif
  //spin_lock( &QueueLock );
 
   //enqueue first header byte  
-  queue_enqueue( &_internals.TxQueue, ( (int)target_base << 8 | cmd->target) );
+  queue_enqueue( &_internals.TxQueue, ( (int)target_base| cmd->target << 8) );
   //enqueue second header byte  
-  queue_enqueue( &_internals.TxQueue, ( (int)target_base_type << 8 | cmd->type) );
+  queue_enqueue( &_internals.TxQueue, ( (int)target_base_type | cmd->type << 8) );
   //enqueue third header byte  
-  queue_enqueue( &_internals.TxQueue, ( (int)target_base_length << 8 | cmd->length) );
+  queue_enqueue( &_internals.TxQueue, ( (int)target_base_length | cmd->length << 8) );
   //enqueue fourth header byte  
-  queue_enqueue( &_internals.TxQueue, ( (int)target_base_reserved << 8 | cmd->reserved) );
+  queue_enqueue( &_internals.TxQueue, ( (int)target_base_reserved | cmd->reserved << 8) );
 
   for (i = 0; i < length; i++) //length *4 bytes
-    queue_enqueue( &_internals.TxQueue, ( (int)target_base_data << 8 | cmd->data[i] ) );
+    queue_enqueue( &_internals.TxQueue, ( (int)target_base_data | cmd->data[i]  << 8) );
 
   for (i = 0; i < sizeof(uint32_t); i++) //length *4 bytes
-    queue_enqueue( &_internals.TxQueue, ( (int)target_base_crc << 8 | ((uint8_t *)&cmd->crc)[i] ) );
+    queue_enqueue( &_internals.TxQueue, ( (int)target_base_crc | (((uint8_t *)&cmd->crc)[i]) << 8) );
 
   //spin_unlock( &QueueLock );
 
-  tasklet_schedule(&_internals_irq_data_m2r_tasklet); 
+  //tasklet_schedule(&_internals_irq_data_m2r_tasklet); 
+  //schedule_work(&_internals_irq_data_m2r_work);
+  WAIT_WAKEUP(comm_wait_queue);
 
   /* update the stats */
   _internals.stats.sent_cmd_count++;

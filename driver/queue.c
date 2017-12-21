@@ -48,3 +48,48 @@ int queue_dequeue(queue_t* queue, u16* item)
     return 1;
   }
 }
+
+//start is the start address of the block
+//returns number of bytes to read, always an even number since one element has 2 bytes!
+int queue_read_seq_block(queue_t *queue, void **start)
+{
+  if (queue->write == queue->read)
+    return 0;
+  else if (queue->write > queue->read) //does not overflow over boundaries
+  {
+    *start = (void *)&queue->arr[queue->read];
+    return (queue->write - queue->read) << 1;
+  }
+  else //overflows, only return buffer until boundaries since otherwise it is not sequential
+  {
+    *start = (void *)&queue->arr[queue->read];
+    return (QUEUE_SIZE - queue->read) << 1; //times two to get the actual bytesize since element is u16    
+  }
+}
+
+int queue_write_seq_block(queue_t *queue, void **start)
+{
+  *start = (void *)&queue->arr[queue->write];
+  if (queue->write >= queue->read) //write is ahead or equal, upper bound is the limit
+    {
+      return (QUEUE_SIZE - queue->write) << 1;
+    }
+    else //overflows, only return buffer until boundaries since otherwise it is not sequential
+    {
+      return (queue->read - queue->write) << 1; //times two to get the actual bytesize since element is u16    
+    }
+}
+
+//bytes_to_skip need to be en even number since one element is 2 bytes long!
+void queue_skip_read_block(queue_t *queue, int bytes_to_skip)
+{
+  int read = queue->read + (bytes_to_skip >> 1);
+  queue->read = (read >= QUEUE_SIZE) ? 0 : read;
+}
+
+//bytes_to_skip need to be en even number since one element is 2 bytes long!
+void queue_skip_write_block(queue_t *queue, int bytes_to_skip)
+{
+  int write = queue->write + (bytes_to_skip >> 1);
+  queue->write = (write >= QUEUE_SIZE) ? 0 : write;
+}

@@ -17,4 +17,8 @@ int queue_dequeue(queue_t* queue, u16* item);
 int queue_is_empty(queue_t* queue);
 int queue_is_full(queue_t* queue);
 
+int queue_read_seq_block(queue_t *queue, void **start);
+int queue_write_seq_block(queue_t *queue, void **start);
+void queue_skip_read_block(queue_t *queue, int bytes_to_skip);
+void queue_skip_write_block(queue_t *queue, int bytes_to_skip);
 #endif

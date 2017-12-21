@@ -11,6 +11,7 @@ tty-send/tty-send
 driver.VC.opendb
 _NCrunch_driver/
 *.o
+*.o.d
 *.cmd
 *.symvers
 *.order
