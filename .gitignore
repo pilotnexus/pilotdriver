@@ -23,3 +23,7 @@ _NCrunch_driver/
 package/debian/DEBIAN/control
 *.swp
 driver/debug.h
+autobuild/boot/
+autobuild/firmware/
+autobuild/images/
+autobuild/root/

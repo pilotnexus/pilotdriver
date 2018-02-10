@@ -168,7 +168,7 @@ static int32_t pilot_spi_probe(struct spi_device * spi)
     LOG_DEBUG("pilot_spi_probe() for CS0 called");
     //spi->modalias = "pilot-device-driver";
     spi->mode = SPI_MODE_0;
-    spi->max_speed_hz = 10000000; //todo - get from devicetree
+    spi->max_speed_hz = 25000000; //todo - get from devicetree
     spi->bits_per_word = 8;
     spi->chip_select = 0;
 
@@ -183,7 +183,7 @@ static int32_t pilot_spi_probe(struct spi_device * spi)
     _internals.spi_xfer.tx_buf = &_internals.send;
     _internals.spi_xfer.rx_buf = &_internals.recv,
     _internals.spi_xfer.len = 2;
-    _internals.spi_xfer.speed_hz = 1000000; //todo - get from devicetree
+    _internals.spi_xfer.speed_hz = 4000000; //todo - get from devicetree
 
     if (np)
     {
@@ -502,12 +502,14 @@ static void pilot_spi0_handle_received_base_cmd(pilot_cmd_t *cmd)
     {
       _internals.uid = INT_FROM_BYTES((cmd->data));
       _internals.uid_is_updated = 1; /* mark the base uid as updated */
+      WAIT_WAKEUP(_internals.uid_is_updated_wq);
     }
     else /* update the module uids */
     {
       for (i = 0; i < pilot_cmd_t_data_size && i < EEPROM_UID_LENGTH; i++)
         _internals.modules[target_t_get_module_slot(cmd->target)].uid.uid[i] = cmd->data[i];
       _internals.modules[target_t_get_module_slot(cmd->target)].uid_is_updated = 1; /* mark the uid as updated */
+      WAIT_WAKEUP(_internals.modules[target_t_get_module_slot(cmd->target)].uid_is_updated_wq);
     }
 
     break;
@@ -517,6 +519,7 @@ static void pilot_spi0_handle_received_base_cmd(pilot_cmd_t *cmd)
     for (i = 0; i < pilot_cmd_t_data_size && i < EEPROM_HID_LENGTH; i++)
       _internals.modules[target_t_get_module_slot(cmd->target)].hid.data[i] = cmd->data[i];
     _internals.modules[target_t_get_module_slot(cmd->target)].hid_is_updated = 1; /* mark the hid as updated */
+    WAIT_WAKEUP(_internals.modules[target_t_get_module_slot(cmd->target)].hid_is_updated_wq);
     break;
 
   case pilot_cmd_type_eeprom_fid_get:
@@ -524,6 +527,7 @@ static void pilot_spi0_handle_received_base_cmd(pilot_cmd_t *cmd)
     for (i = 0; i < pilot_cmd_t_data_size && i < EEPROM_FID_LENGTH; i++)
       _internals.modules[target_t_get_module_slot(cmd->target)].fid.data[i] = cmd->data[i];
     _internals.modules[target_t_get_module_slot(cmd->target)].fid_is_updated = 1; /* mark the fid as updated */
+    WAIT_WAKEUP(_internals.modules[target_t_get_module_slot(cmd->target)].fid_is_updated_wq);
     break;
 
   case pilot_cmd_type_eeprom_userdata_get:
@@ -532,6 +536,7 @@ static void pilot_spi0_handle_received_base_cmd(pilot_cmd_t *cmd)
     for (i = 0; i < pilot_cmd_t_data_size && i < EEPROM_DATA_LENGTH; i++)
       _internals.modules[eeprom_decode_module_slot(cmd->target)].user[data_index].data[i] = cmd->data[i];
     _internals.modules[eeprom_decode_module_slot(cmd->target)].user_is_updated[data_index] = 1;
+    WAIT_WAKEUP(_internals.modules[eeprom_decode_module_slot(cmd->target)].user_is_updated_wq[data_index]);
     break;
 
   case pilot_cmd_type_module_type_get:
@@ -539,6 +544,7 @@ static void pilot_spi0_handle_received_base_cmd(pilot_cmd_t *cmd)
     for (i = 0; i < pilot_cmd_t_data_size && i < MODULE_TYPE_LENGTH; i++)
       _internals.modules[target_t_get_module_slot(cmd->target)].type.name[i] = cmd->data[i];
     _internals.modules[target_t_get_module_slot(cmd->target)].type_is_updated = 1; /* mark the type as updated */
+    WAIT_WAKEUP(_internals.modules[target_t_get_module_slot(cmd->target)].type_is_updated_wq);
     break;
 
   case pilot_cmd_type_test_run:
@@ -551,7 +557,8 @@ static void pilot_spi0_handle_received_base_cmd(pilot_cmd_t *cmd)
     _internals.test_result.count_total = (int)cmd->data[(int)pilot_test_run_index_total_count];
     _internals.test_result.result = (pilot_test_run_result_t)cmd->data[(int)pilot_test_run_index_result];
     _internals.test_result_is_updated = 1; /* mark the test results as updated */
-     break;
+    WAIT_WAKEUP(_internals.test_result_is_updated_wq);
+    break;
   }
 }
 
@@ -1074,6 +1081,7 @@ static int pilot_try_get_module_type(int module_index, int timeout, pilot_module
   else
   {
     *type = module_type;
+    LOG_DEBUGALL("pilot_try_get_module_type() successful");
   }
 
   return is_timedout ? -1 : SUCCESS;
@@ -1105,6 +1113,7 @@ static int pilot_try_get_module_uid(int module_index, int timeout, pilot_eeprom_
   else
   {
     *uid = &_internals.modules[module_index].uid;
+    LOG_DEBUGALL("pilot_try_get_module_uid() successful");
   }
 
   return timedout ? -1 : SUCCESS;
@@ -1135,6 +1144,7 @@ static int pilot_try_get_module_hid(int module_index, int timeout, pilot_eeprom_
   else
   {
     *hid = &_internals.modules[module_index].hid;    
+    LOG_DEBUGALL("pilot_try_get_module_hid() successful");
   }
 
   return timedout ? -1 : SUCCESS;
@@ -1165,6 +1175,7 @@ static int pilot_try_get_module_fid(int module_index, int timeout, pilot_eeprom_
   else
   {
     *fid = &_internals.modules[module_index].fid;    
+    LOG_DEBUGALL("pilot_try_get_module_fid() successful");
   }
 
   return timedout ? -1 : SUCCESS;
@@ -1196,6 +1207,7 @@ static int pilot_try_get_module_eeprom_data(int module_index, int user_data_inde
   else
   {
     *data = &_internals.modules[module_index].user[user_data_index];    
+    LOG_DEBUGALL("pilot_try_get_module_eeprom_data() successful");
   }
 
   return timedout ? -1 : SUCCESS;
