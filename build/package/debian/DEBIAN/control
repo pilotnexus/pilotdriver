@@ -1,0 +1,7 @@
+Package: pilot-4.9.59-v7+1047
+Version: 2.0.0
+Essential: no
+Architecture: all
+Maintainer: Amescon <office@amescon.com>
+Provides: pilot-4.9.59-v7+1047
+Description: PiloT Driver, use /proc/pilot/ filesystem to configure it

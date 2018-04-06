@@ -27,3 +27,5 @@ autobuild/boot/
 autobuild/firmware/
 autobuild/images/
 autobuild/root/
+/build/rpi/
+/build/images/

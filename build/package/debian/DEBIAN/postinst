@@ -10,6 +10,7 @@ modprobe pilot_tty
 modprobe pilot_rtc
 modprobe pilot_slcd
 modprobe pilot_plc
+modprobe pilot_fpga
 
 # add the modules to /etc/modules so that they gets loaded on system startup
 echo "pilot"     >> /etc/modules
@@ -18,3 +19,4 @@ echo "pilot_io"   >> /etc/modules
 echo "pilot_rtc"  >> /etc/modules
 echo "pilot_slcd" >> /etc/modules
 echo "pilot_plc"  >> /etc/modules
+echo "pilot_fpga"  >> /etc/modules

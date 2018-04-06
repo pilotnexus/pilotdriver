@@ -12,6 +12,9 @@
 /* the number of ports for each module */
 #define MODULE_PORT_COUNT 2
 
+/* command message payload calc macro */
+#define MSG_LEN(x) (0x7F & (x >> 2))
+
 /* we're using 16 bit SPI communication */
 typedef u16 spidata_t;
 
@@ -62,7 +65,8 @@ typedef enum
   pilot_cmd_type_test_run,                    /* rpi <-> pilot request to run internal tests */
   pilot_cmd_type_plc_variable_get,          /* rpi <-> pilot command to get single variable */
   pilot_cmd_type_plc_variable_set,          /* rpi -> pilot command to write single */
-  rpcp_cmd_type_fpga_state                  /* rpi <-> fpga state */
+  pilot_cmd_type_fpga_state,                  /* rpi <-> fpga state */
+  pilot_cmd_type_fpga_cmd
 } pilot_cmd_type_t;
 
 /* enum that specifies the target of the stream communication
@@ -213,20 +217,20 @@ typedef enum {
 } pilot_input_index_t;
 
 typedef enum {
-  pilot_lora_enable_index_value = 7 /* encode the enable value (0=disable, 1=enable) in the last byte */
+  pilot_lora_enable_index_value = 0 /* encode the enable value (0=disable, 1=enable) in the last byte */
 } pilot_lora_enable_index_t;
 
 /* helper enum for pilot_cmd_type_gps_set_enable / pilot_cmd_type_gps_get_enable handling */
 typedef enum {
-  pilot_gps_enable_index_value = 7 /* encode the enable value (0=disable, 1=enable) in the last byte */
+  pilot_gps_enable_index_value = 0 /* encode the enable value (0=disable, 1=enable) in the last byte */
 } pilot_gps_enable_index_t;
 
 typedef enum {
-  pilot_gsm_enable_index_value = 7 /* encode the enable value (0=disable, 1=enable) in the last byte */
+  pilot_gsm_enable_index_value = 0 /* encode the enable value (0=disable, 1=enable) in the last byte */
 } pilot_gsm_enable_index_t;
 
 typedef enum {
-  pilot_onewire_enable_index_value = 7 /* encode the enable value (0=disable, 1=enable) in the last byte */
+  pilot_onewire_enable_index_value = 0 /* encode the enable value (0=disable, 1=enable) in the last byte */
 } pilot_onewire_enable_index_t;
 
 typedef enum {
@@ -245,7 +249,7 @@ typedef enum
 typedef enum
 {
   pilot_io16_set_direction_index_block = 0,
-  pilot_io16_set_direction_index_direction = 7
+  pilot_io16_set_direction_index_direction = 2
 } pilot_io16_set_direction_index_t;
 
 typedef enum {
@@ -297,7 +301,7 @@ typedef enum
 
 typedef enum
 {
-  pilot_plc_state_index = 7 /* encode the plc state in the last byte */
+  pilot_plc_state_index = 0 /* encode the plc state in the last byte */
 } pilot_plc_state_index_t;
 
 typedef enum
@@ -307,12 +311,6 @@ typedef enum
   pilot_plc_cycletimes_index_cur = 4, /* encode the current time in bytes 4,5 */
   pilot_plc_cycletimes_index_tick = 6  /* encode the tick in the bytes 6,7 */
 } pilot_plc_cycletimes_index_t;
-
-typedef enum
-{
-  pilot_plc_variables_config_index_count = 4, /* encode the number of variables in bytes 5, 6, 7, 8 */
-  pilot_plc_variables_config_index_success = 7 /* encode the success of configuration reply in the last byte */
-} pilot_plc_variables_config_index_t;
 
 typedef enum
 {
@@ -347,14 +345,14 @@ typedef enum
 #define VAR_GET_NUMBER(v) ((uint16_t) v & ~0x8000)
 #define VAR_IS_FORCED(v) (v & 0x8000)
 
-#define EEPROM_UID_LENGTH 8
+#define EEPROM_UID_LENGTH 8 //needs to be multiple of 4!
 
 /* unique factory programmed 64-bit eeprom id */
 typedef struct {
   uint8_t uid[EEPROM_UID_LENGTH];
 } pilot_eeprom_uid_t;
 
-#define EEPROM_DATA_LENGTH 8
+#define EEPROM_DATA_LENGTH 8 //needs to be multiple of 4!
 typedef struct {
   uint8_t data[EEPROM_DATA_LENGTH];
 } pilot_eeprom_data_t;
@@ -365,7 +363,7 @@ typedef pilot_eeprom_data_t pilot_eeprom_hid_t;
 typedef pilot_eeprom_data_t pilot_eeprom_fid_t;
 #define EEPROM_FID_LENGTH EEPROM_DATA_LENGTH
 
-#define MODULE_TYPE_LENGTH 8
+#define MODULE_TYPE_LENGTH 8 //needs to be multiple of 4!
 
 /* type of a module */
 typedef struct {

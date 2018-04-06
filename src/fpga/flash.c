@@ -70,11 +70,13 @@ int xfer_spi(module_slot_t slot, uint8_t *data, int n, uint8_t cont)
 	return ret;
 }
 
+/*
 void send_spi(module_slot_t slot, uint8_t *data, int n)
 {
     target_t target = target_t_from_module_slot_and_port(slot, module_port_1);
     pilot_send(target, (char *)data, n);
 }
+*/
 
 void flash_read_id(module_slot_t slot, char* buffer)
 {
@@ -123,7 +125,7 @@ void flash_64kB_sector_erase(module_slot_t slot, int addr)
 
 	LOG_DEBUG("erase 64kB sector at 0x%06X..", addr);
 
-	send_spi(slot, command, 4);
+	xfer_spi(slot, command, 4, SPI_END);
 }
 
 bool flash_busy(module_slot_t slot)
@@ -169,8 +171,9 @@ void flash_wait(module_slot_t slot)
 	LOG_DEBUG("waiting done.");
 }
 
-void flash_prog(module_slot_t slot, int addr, char *data, int n)
+bool flash_prog(module_slot_t slot, int addr, char *data, int n)
 {
+  int retryCount = 0;
 	uint8_t command[4];
     target_t target = target_t_from_module_slot_and_port(slot, module_port_1);
 
@@ -184,16 +187,24 @@ void flash_prog(module_slot_t slot, int addr, char *data, int n)
 	  printk("wait for enabled...");
 	  #endif
 
-	  while(!is_flash_write_enabled_and_not_busy(slot))
+    retryCount = 0;
+	  while(!is_flash_write_enabled_and_not_busy(slot)) {
 	    msleep_interruptible(1);
+      if (retryCount++ > 200)
+        return false;
+    }
 
 	  #ifdef DEBUG
 	  printk("wait for send buffer...");
 	  #endif
 
 	  /* wait for the internal sendbuffer to become available again */
-	  while (pilot_get_free_send_buffer_size(slot) < 256)
+    retryCount = 0;
+	  while (pilot_get_free_send_buffer_size(slot) < 256) {
 	    msleep_interruptible(1);
+      if (retryCount++ > 200)
+        return false;
+    }
 
 	  #ifdef DEBUG
 	  printk("ok\n");
@@ -206,26 +217,30 @@ void flash_prog(module_slot_t slot, int addr, char *data, int n)
 	  command[3] = (uint8_t)addr;
 
 	  //start sending data block (256 bytes max.)
-	  pilot_send(target, command, 4);
+	  xfer_spi(target, command, 4, SPI_END);
 
 	  #ifdef DEBUG
 	  printk("writing %i bytes (start address %i)...", n, addr);
 	  #endif
 
-	  if (n > 1)
-	    pilot_send(target, data, n-1); /* send the bytes */
-	  pilot_send(target | 0x80, data+n-1, 1); /* send the bytes */
+    xfer_spi(target, data, n, SPI_END);
 
 	  #ifdef DEBUG
 	  printk("wait for ready...");
 	  #endif
 
-	  while(flash_busy(slot))
+    retryCount = 0;
+	  while(flash_busy(slot)) {
 	    msleep_interruptible(1);
+      if (retryCount++ > 200)
+        return false;
+    }
 
 	  #ifdef DEBUG
 	  printk("ok\n");
 	  #endif
+
+    return true;
 }
 
 bool flash_read(module_slot_t slot, int addr, char *data, int n)

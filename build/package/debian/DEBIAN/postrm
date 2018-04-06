@@ -6,6 +6,7 @@ rmmod pilot_slcd
 rmmod pilot_rtc
 rmmod pilot_tty
 rmmod pilot_io
+rmmod pilot_fpga
 rmmod pilot
 
 # update list of modules for modprobe
@@ -17,4 +18,5 @@ sed "/pilot_slcd/d" /etc/modules -i
 sed "/pilot_rtc/d"  /etc/modules -i
 sed "/pilot_tty/d"  /etc/modules -i
 sed "/pilot_io/d"   /etc/modules -i
-sed "/rpc+/d"     /etc/modules -i
+sed "/pilot_fpga/d" /etc/modules -i
+sed "/pilot/d"     /etc/modules -i

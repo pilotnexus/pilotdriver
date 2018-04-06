@@ -35,9 +35,10 @@ static void pilot_fpga_send_get_fpga_state(module_slot_t slot, int8_t chipselect
   pilot_cmd_t cmd;
   memset(&cmd, 0, sizeof(pilot_cmd_t));
   cmd.target = target_t_from_module_slot_and_port(slot, 0);
-  cmd.type = rpcp_cmd_type_fpga_state;
+  cmd.type = pilot_cmd_type_fpga_state;
   cmd.data[0] = (char)chipselect;
   cmd.data[1] = (char)reset;
+  cmd.length = MSG_LEN(4); //4 bytes, min size
   pilot_send_cmd(&cmd);
 }
 
@@ -59,6 +60,44 @@ static int pilot_fpga_try_get_fpga_state(module_slot_t slot, int timeout, int8_t
     {
       timedout=1;
       LOG_DEBUG("calling pilot_fpga_send_get_fpga_state() TIMED OUT");
+      break;
+    }
+    udelay(100);
+  }
+
+  m_internals.modules[slot].is_updated = 0;
+
+ return timedout ? 0 : 1;
+}
+
+static void pilot_fpga_send_fpga_cmd(module_slot_t slot, uint8_t *data, int size)
+{
+  pilot_cmd_t cmd;
+  cmd.target = target_t_from_module_slot_and_port(slot, 0);
+  memcpy(&cmd, data, size);
+  cmd.type = pilot_cmd_type_fpga_state;
+  cmd.length = MSG_LEN(size);
+  pilot_send_cmd(&cmd);
+}
+
+static int pilot_fpga_try_send_fpga_cmd(module_slot_t slot, uint8_t *data, int size, int timeout)
+{
+  unsigned long timestamp;
+  int timedout = 0;
+
+  LOG_DEBUG("calling pilot_fpga_send_fpga_cmd()");
+
+  pilot_fpga_send_fpga_cmd(slot, data, size);
+
+  /* choose a point in time thats timeout ms in the future */
+  timestamp = jiffies + (timeout * HZ / 1000);
+
+  while (!m_internals.modules[slot].is_updated)
+  {
+    if (time_after(jiffies, timestamp))
+    {
+      timedout=1;
+      LOG_DEBUG("calling pilot_fpga_send_fpga_cmd() TIMED OUT");
       break;
     }
     udelay(100);
@@ -183,25 +222,29 @@ static int pilot_fpga_proc_bitstream_write(struct file *file, const char __user 
   flash_bulk_erase(module_index);
 
   while(flash_busy(module_index))
-    msleep_interruptible(100);
+    if (msleep_interruptible(100))
+      return -EINVAL;
+      
   LOG_DEBUG("flash ready after erase.");
 
   //LOG_DEBUG("pilot_tty_write(count=%i) called", count);
   //spin_lock(&_internals_lock);
 
 
-    while (bytes_written < count)
-    {
-      target = target_t_from_module_slot_and_port(module_index, module_port_1); //write, no return data
-      blocksize = (count - bytes_written) > 256 ? 256 : (count - bytes_written); /* sent the remaining bytes */
+  while (bytes_written < count)
+  {
+    target = target_t_from_module_slot_and_port(module_index, module_port_1); //write, no return data
+    blocksize = (count - bytes_written) > 256 ? 256 : (count - bytes_written); /* sent the remaining bytes */
 
-      flash_prog(module_index, addr, (char *)(buf+bytes_written), blocksize);
+    if (!flash_prog(module_index, addr, (char *)(buf+bytes_written), blocksize))
+      return -EINVAL;
 
-      addr += 256;
-      bytes_written += blocksize; /* increment the number of bytes written */
-    }
+    addr += 256;
+    bytes_written += blocksize; /* increment the number of bytes written */
+  }
 
-    flash_prog(module_index, 0x07FF00, (char *)&count, sizeof(size_t));
+  if (!flash_prog(module_index, 0x07FF00, (char *)&count, sizeof(size_t)))
+    return -EINVAL;
 
   if (!pilot_fpga_try_get_fpga_state(module_index, 1000, UNSELECT_CHIP, NO_RESET))
      return -EINVAL;
@@ -395,7 +438,7 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
 
   switch (cmd.type)
   {
-    case rpcp_cmd_type_fpga_state:
+    case pilot_cmd_type_fpga_state:
       pilot_fpga_handle_get_fpga_state_cmd(&cmd);
       break;
     default: ret = pilot_cmd_handler_status_ignored; break;

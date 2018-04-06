@@ -1,0 +1,7 @@
+#ignore all .git and .chache folders
+.git
+.cache
+boot
+root
+images
+rpi

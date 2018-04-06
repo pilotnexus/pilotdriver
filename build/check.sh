@@ -11,6 +11,10 @@ image="${filename}.img"
 #  exit 1
 #fi
 
+if [ ! -d "images"]; then
+  mkdir images
+fi
+
 cd ./images
 if [ ! -f $image ]; then
     echo "Version ${fullfilename} not found, downloading..."
@@ -27,9 +31,18 @@ echo "${partitions[0]}"
 echo "second offset:"
 echo "${partitions[1]}"
 
-sudo umount ../boot
-sudo umount ../root
-sudo mount -v -o offset=${partitions[0]},gid=$(id -u $USER),uid=$(id -u $USER) -t vfat $image ../boot
-sudo mount -v -o offset=${partitions[1]} -t ext4 $image ../root
-sudo chown $USER:$USER ../root
 cd ..
+
+if [ ! -d "boot"]; then
+  mkdir boot
+fi
+
+if [ ! -d "root"]; then
+  mkdir root
+fi
+
+sudo umount ./boot
+sudo umount ./root
+sudo mount -v -o offset=${partitions[0]},gid=$(id -u $USER),uid=$(id -u $USER) -t vfat $image ./boot
+sudo mount -v -o offset=${partitions[1]} -t ext4 $image ./root
+sudo chown $USER:$USER ./root

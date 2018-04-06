@@ -364,6 +364,7 @@ static void pilot_io_request_input_value(module_slot_t slot, pilot_input_target_
   cmd.target = target_t_from_module_slot_and_port(slot, module_port_1);
   cmd.type = pilot_cmd_type_input_get_input;
   cmd.data[pilot_input_index_target] = input;
+  cmd.length = MSG_LEN(4); // minimum payload length
   pilot_send_cmd(&cmd);
 }
 
@@ -375,6 +376,7 @@ static void pilot_io_request_counter_values(module_slot_t module_slot, pilot_cou
   cmd.target                          = target_t_from_module_slot_and_port(module_slot, module_port_1);
   cmd.type                            = pilot_cmd_type_input_get_counter;
   cmd.data[pilot_counter_index_target] = counter_target;
+  cmd.length = MSG_LEN(8);
   pilot_send_cmd(&cmd);
 }
 
@@ -387,6 +389,7 @@ static void pilot_io_set_output_value(module_slot_t slot, pilot_output_target_t 
   cmd.type                                = pilot_cmd_type_output_set_value;
   cmd.data[(int)pilot_output_index_target] = output;
   *((uint32_t *)&cmd.data[(int)pilot_output_index_value]) = value;
+  cmd.length = MSG_LEN(8);
   pilot_send_cmd(&cmd);
 }
 
@@ -399,6 +402,7 @@ static void pilot_io_set_io_direction(module_slot_t slot, pilot_io16_block_t blo
   cmd.type                                               = pilot_cmd_type_io16_set_direction;
   cmd.data[(int)pilot_io16_set_direction_index_block]     = block;
   cmd.data[(int)pilot_io16_set_direction_index_direction] = direction;
+  cmd.length = MSG_LEN(8);
   pilot_send_cmd(&cmd);
 }
 
@@ -461,6 +465,7 @@ static void pilot_io_set_counter_value(module_slot_t module_slot,
   cmd.data[pilot_counter_index_value + 4] = (counter_value >> 2*8) & 0xFF;
   cmd.data[pilot_counter_index_value + 5] = (counter_value >> 1*8) & 0xFF;
   cmd.data[pilot_counter_index_value + 6] = (counter_value >> 0*8) & 0xFF;
+  cmd.length = MSG_LEN(8);
 
   pilot_send_cmd(&cmd); /* send the command */
 }

@@ -307,7 +307,7 @@ static void pilot_plc_send_set_variable_cmd(uint16_t varnumber, char *value)
   memcpy(cmd.data, value, 8);
   cmd.data[8] = varnumber & 0xFF;
   cmd.data[9] = varnumber >> 8; 
-
+  cmd.length = MSG_LEN(12);
   pilot_send_cmd(&cmd);
 }
 
@@ -320,7 +320,8 @@ static void pilot_plc_send_get_variable_cmd(uint16_t varnumber)
 
   cmd.data[8] = varnumber & 0xFF; 
   cmd.data[9] = varnumber >> 8; 
-  
+  cmd.length = MSG_LEN(4);
+
   pilot_send_cmd(&cmd);
 }
 
@@ -841,6 +842,7 @@ static void pilot_plc_send_set_state_cmd(pilot_plc_state_t state)
   cmd.target = target_base;
   cmd.type = pilot_cmd_type_plc_state_set;
   cmd.data[(int)pilot_plc_state_index] = state;
+  cmd.length = MSG_LEN(4);
   pilot_send_cmd(&cmd);
 }
 
@@ -850,6 +852,8 @@ static void pilot_plc_send_get_state_cmd(void)
   memset(&cmd, 0, sizeof(pilot_cmd_t));
   cmd.target = target_base;
   cmd.type = pilot_cmd_type_plc_state_get;
+  cmd.length = 0; //no payload
+
   pilot_send_cmd(&cmd);
 }
 
@@ -1013,6 +1017,7 @@ static void pilot_plc_send_get_cycletimes_cmd(void)
   memset(&cmd, 0, sizeof(pilot_cmd_t));
   cmd.target = target_base;
   cmd.type = pilot_cmd_type_plc_cycletimes_get;
+  cmd.length = 0; //no payload
   pilot_send_cmd(&cmd);
 }
 
@@ -1094,8 +1099,9 @@ static void pilot_plc_send_variables_readconfig_cmd(int count)
   cmd.target = target_base;
   cmd.type = pilot_cmd_type_plc_variables_read_config;
   for (i = 0; i < sizeof(int); i++)
-    cmd.data[(int)pilot_plc_variables_config_index_count + i] = BYTE_FROM_INT(count, i);
+    cmd.data[i] = BYTE_FROM_INT(count, i);
 
+  cmd.length = MSG_LEN(4);
   /* send the command */
   pilot_send_cmd(&cmd);
 }
@@ -1223,8 +1229,9 @@ static void pilot_plc_send_variables_writeconfig_cmd(int count)
   cmd.target = target_base;
   cmd.type = pilot_cmd_type_plc_variables_write_config;
   for (i = 0; i < sizeof(int); i++)
-    cmd.data[(int)pilot_plc_variables_config_index_count + i] = BYTE_FROM_INT(count, i);
+    cmd.data[i] = BYTE_FROM_INT(count, i);
 
+  cmd.length = MSG_LEN(4);
   /* send the command */
   pilot_send_cmd(&cmd);
 }
@@ -1359,6 +1366,8 @@ static void pilot_plc_send_get_variable_values_cmd(void)
   memset(&cmd, 0, sizeof(pilot_cmd_t));
   cmd.target = target_base;
   cmd.type = pilot_cmd_type_plc_variables_get;
+  cmd.length = 0; //no payload
+
   pilot_send_cmd(&cmd);
 }
 
@@ -1447,7 +1456,9 @@ static void pilot_plc_send_vars_value_cmd(void)
   cmd.target = target_plc_write;
   cmd.type = pilot_cmd_type_plc_variables_set;
   for (i = 0; i < sizeof(int); i++)
-    cmd.data[(int)pilot_plc_variables_value_index_size + i] = BYTE_FROM_INT(_internals.variablestream.write_value.index, i);
+    cmd.data[i] = BYTE_FROM_INT(_internals.variablestream.write_value.index, i);
+
+  cmd.length = MSG_LEN(4);
 
   /* send the cmd */
   pilot_send_cmd(&cmd);

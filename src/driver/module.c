@@ -389,17 +389,16 @@ static int __init rpc_init(void)
   INIT_WQ_HEAD(data_received_wait_queue);
   INIT_WQ_HEAD(comm_wait_queue);
 
-  pilot_receive_thread = kthread_run(pilot_receive_task, NULL, "K_PILOT_RECV_TASK");
-
   pilot_internals_init();
 
   /* driver ids are 1 based */
   for (i = 0; i < DRIVERS_COUNT; i++)
     _internals.drivers[i].id = i+1;
 
-
   /* SPI init */  
   spi_register_driver(&pilot_spi_driver);
+
+  pilot_receive_thread = kthread_run(pilot_receive_task, NULL, "K_PILOT_RECV_TASK");
 
     // init the /proc/XXX files
   LOG_DEBUG("rpc_proc_init()");
@@ -589,7 +588,7 @@ static void pilot_spi0_handle_received_cmd(pilot_cmd_t cmd)
 /* description: this function handles data received from the stm that is targetted at the base driver */
 static void pilot_spi0_handle_received_cmd_byte(target_t target, uint8_t data)
 {
-  int crcindex;
+  uint32_t crcindex;
   uint8_t length_parity;
 
 #ifdef DEBUGALL
@@ -641,8 +640,11 @@ static void pilot_spi0_handle_received_cmd_byte(target_t target, uint8_t data)
   else if (target == target_base_crc)
   { //crc check
     crcindex = _internals.current_cmd.index - pilot_current_cmd_index_data_begin - _internals.current_cmd.length;
-    ((uint8_t *)&_internals.current_cmd.cmd.crc)[crcindex] = data;
-    _internals.current_cmd.cmd_completion |= (0x10 << crcindex);
+    if (crcindex >= 0 && crcindex < 4) 
+    {
+      ((uint8_t *)&_internals.current_cmd.cmd.crc)[crcindex] = data;
+      _internals.current_cmd.cmd_completion |= (0x10 << crcindex);
+    }
   }
   else
   {
@@ -949,6 +951,7 @@ static void pilot_set_module_hid(module_slot_t module, const pilot_eeprom_hid_t 
   cmd.type = pilot_cmd_type_eeprom_hid_set;
   for (i = 0; i < EEPROM_HID_LENGTH; i++)
     cmd.data[i] = hid->data[i];
+  cmd.length = MSG_LEN(EEPROM_HID_LENGTH);
 
   /* send it to the pilot */
   pilot_send_cmd(&cmd);
@@ -986,6 +989,8 @@ static void pilot_set_module_fid(module_slot_t module, const pilot_eeprom_fid_t 
   cmd.type = pilot_cmd_type_eeprom_fid_set;
   for (i = 0; i < EEPROM_FID_LENGTH; i++)
     cmd.data[i] = fid->data[i];
+
+  cmd.length = MSG_LEN(EEPROM_FID_LENGTH);
 
   /* send it to the pilot */
   pilot_send_cmd(&cmd);
@@ -1046,6 +1051,8 @@ static void pilot_set_module_eeprom_data(int module_index, int data_index, pilot
   for (i = 0; i < EEPROM_DATA_LENGTH; i++)
     cmd.data[i] = data->data[i];
 
+  cmd.length = MSG_LEN(EEPROM_DATA_LENGTH);
+
   /* send it to the pilot */
   pilot_send_cmd(&cmd);
 }
@@ -1069,6 +1076,8 @@ static int pilot_try_get_module_type(int module_index, int timeout, pilot_module
   memset(&cmd, 0, sizeof(pilot_cmd_t));
   cmd.target = target_t_from_module_slot_and_port(module_index, module_port_1);
   cmd.type = pilot_cmd_type_module_type_get;
+  cmd.length = 0; //no payload
+
   pilot_send_cmd(&cmd);
 
   /* wait until the pilot_module_type is updated or the timeout occurs */
@@ -1100,6 +1109,7 @@ static int pilot_try_get_module_uid(int module_index, int timeout, pilot_eeprom_
   memset(&cmd, 0, sizeof(pilot_cmd_t));
   cmd.target = target_t_from_module_slot_and_port(module_index, module_port_1);
   cmd.type = pilot_cmd_type_eeprom_uid_get;
+  cmd.length = 0; //no payload
 
   /* send the cmd */
   pilot_send_cmd(&cmd);
@@ -1131,6 +1141,7 @@ static int pilot_try_get_module_hid(int module_index, int timeout, pilot_eeprom_
   memset(&cmd, 0, sizeof(pilot_cmd_t));
   cmd.target = target_t_from_module_slot_and_port(module_index, module_port_1);
   cmd.type = pilot_cmd_type_eeprom_hid_get;
+  cmd.length = 0; //no payload
 
   /* send the cmd */
   pilot_send_cmd(&cmd);
@@ -1162,6 +1173,7 @@ static int pilot_try_get_module_fid(int module_index, int timeout, pilot_eeprom_
   memset(&cmd, 0, sizeof(pilot_cmd_t));
   cmd.target = target_t_from_module_slot_and_port(module_index, module_port_1);
   cmd.type = pilot_cmd_type_eeprom_fid_get;
+  cmd.length = 0; //no payload
 
   /* send the cmd */
   pilot_send_cmd(&cmd);
@@ -1194,6 +1206,7 @@ static int pilot_try_get_module_eeprom_data(int module_index, int user_data_inde
   cmd.target = target_t_from_module_slot_and_port(module_index, module_port_1);
   cmd.type = pilot_cmd_type_eeprom_userdata_get;
   cmd.data[pilot_eeprom_userdata_index_number] = (char)user_data_index;
+  cmd.length = MSG_LEN(8); //TODO - check size
 
   /* send the cmd */
   pilot_send_cmd(&cmd);
@@ -1457,6 +1470,8 @@ static int pilot_try_get_test_result(int timeout, test_result_t *result)
   memset(&cmd, 0, sizeof(pilot_cmd_t));
   cmd.target = target_base;
   cmd.type = pilot_cmd_type_test_run;
+  cmd.length = 0; //no payload
+
   pilot_send_cmd(&cmd);
 
   /* wait until the test_result is updated or the timeout occurs */
@@ -1539,6 +1554,8 @@ static int pilot_try_get_uid(int timeout, uint32_t *uid)
   memset(&cmd, 0, sizeof(pilot_cmd_t));
   cmd.target = target_base;
   cmd.type = pilot_cmd_type_eeprom_uid_get;
+  cmd.length = 0; //no payload
+
   pilot_send_cmd(&cmd);
 
   /* wait until the test_result is updated or the timeout occurs */
@@ -1856,15 +1873,14 @@ void pilot_send(target_t target, const char* data, int count)
     cpu_relax();
 }
 
-#define MSG_LEN(x) (0x7F & (x >> 2))
 /* sends the supplied command to the stm by calling pilot_send() internally */
 void pilot_send_cmd(pilot_cmd_t* cmd)
 {
   int i;
-  int length = 12;//TODO: currently fixed, needs changes;
   uint8_t length_parity;
+  int length = cmd->length << 2;
   
-  cmd->length = MSG_LEN(length);
+  //cmd->length = MSG_LEN(length);
   length_parity = cmd->length;
 
   //calculate parity
