@@ -5,6 +5,7 @@
 #include <linux/slab.h>       /* needed for kmalloc() */
 #include <linux/wait.h>       /* waitqueue */
 #include <linux/delay.h>       // needed for msleep()
+#include <asm/uaccess.h>     // needed for copy_from_user() function
 #include "module.h"           /* include defines that describe the module */
 #include "../driver/export.h"
 #include "../driver/queue.h"
@@ -74,13 +75,13 @@ static void pilot_fpga_send_fpga_cmd(module_slot_t slot, uint8_t *data, int size
 {
   pilot_cmd_t cmd;
   cmd.target = target_t_from_module_slot_and_port(slot, 0);
-  memcpy(&cmd, data, size);
-  cmd.type = pilot_cmd_type_fpga_state;
+  memcpy(&cmd.data, data, size);
+  cmd.type = pilot_cmd_type_fpga_cmd;
   cmd.length = MSG_LEN(size);
   pilot_send_cmd(&cmd);
 }
 
-static int pilot_fpga_try_send_fpga_cmd(module_slot_t slot, uint8_t *data, int size, int timeout)
+int pilot_fpga_try_send_fpga_cmd(module_slot_t slot, uint8_t *data, int size, int timeout)
 {
   unsigned long timestamp;
   int timedout = 0;
@@ -278,6 +279,51 @@ static const struct file_operations proc_bitstream_fops = {
 };
 
 // *******************************************************************
+// START proc "cmd"
+
+static const char pilot_fpga_proc_cmd_name[] = "cmd";
+
+static int pilot_fpga_proc_cmd_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
+{
+  int bytes_count = count <= pilot_cmd_t_data_size ? count : pilot_cmd_t_data_size;
+  
+  int module_index = (int)PDE_DATA(file->f_inode);
+
+  LOG_DEBUG("called pilot_fpga_proc_cmd_write(module_index: %i, count=%i, off=%i)", module_index, count, (int)*off);
+
+  if (copy_from_user(m_internals.cmd[module_index].buffer, buf, bytes_count) == 0)
+  {
+    pilot_fpga_try_send_fpga_cmd(module_index, m_internals.cmd[module_index].buffer, bytes_count, 500);
+    m_internals.cmd[module_index].length = bytes_count;
+    return bytes_count;
+  }
+  return -EINVAL;
+}
+static int pilot_fpga_proc_cmd_show(struct seq_file *file, void *data)
+{
+  /* get the module index */
+  int module_index = (int)file->private;
+
+  /* write the string to the user */
+  seq_write(file, (const void *)m_internals.cmd[module_index].buffer, m_internals.cmd[module_index].length);
+
+  return 0;
+}
+
+static int pilot_fpga_proc_cmd_open(struct inode *inode, struct file *file)
+{
+  return single_open(file, pilot_fpga_proc_cmd_show, PDE_DATA(inode));
+}
+
+static const struct file_operations proc_cmd_fops = {
+  .owner   = THIS_MODULE,
+  .open    = pilot_fpga_proc_cmd_open,
+  .read    = seq_read,
+  .write   = pilot_fpga_proc_cmd_write,
+  .release = single_release,
+};
+
+// *******************************************************************
 // START proc "done"
 
 static const char pilot_fpga_proc_done_name[] = "done";
@@ -370,6 +416,7 @@ static void pilot_fpga_proc_init(int slot)
   init_waitqueue_head(&m_internals.receive_queue);
   mutex_init(&access_lock);
   proc_create_data(pilot_fpga_proc_bitstream_name, 0666, module_dir, &proc_bitstream_fops, (void*)slot);
+  proc_create_data(pilot_fpga_proc_cmd_name, 0666, module_dir, &proc_cmd_fops, (void*)slot);
   proc_create_data(pilot_fpga_proc_done_name, 0444, module_dir, &proc_done_fops, (void*)slot);
   proc_create_data(pilot_fpga_proc_flash_id_name, 0444, module_dir, &proc_flash_id_fops, (void*)slot);
 }
@@ -378,6 +425,7 @@ static void pilot_fpga_proc_deinit(int slot)
 {
   struct proc_dir_entry *module_dir = pilot_get_proc_module_dir(slot);
   remove_proc_entry(pilot_fpga_proc_bitstream_name, module_dir);
+  remove_proc_entry(pilot_fpga_proc_cmd_name, module_dir);
   remove_proc_entry(pilot_fpga_proc_done_name, module_dir);
   remove_proc_entry(pilot_fpga_proc_flash_id_name, module_dir);
 }
@@ -422,6 +470,18 @@ static int pilot_fpga_callback_can_assign(const pilot_module_type_t *module_type
   return IS_MODULE_TYPE(module_type, fpga_name) ? SUCCESS : -1;
 }
 
+static void pilot_fpga_handle_get_fpga_cmd(pilot_cmd_t *cmd)
+{
+  module_slot_t slot = target_t_get_module_slot(cmd->target);
+
+  m_internals.cmd[slot].length = cmd->length << 2;
+  mb();
+  memcpy((void *)m_internals.cmd[slot].buffer, (void *)cmd->data, m_internals.cmd[slot].length);
+  mb();
+  m_internals.cmd[slot].is_updated = 1;
+}
+
+
 static void pilot_fpga_handle_get_fpga_state_cmd(pilot_cmd_t *cmd)
 {
   module_slot_t slot = target_t_get_module_slot(cmd->target);
@@ -438,6 +498,8 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
 
   switch (cmd.type)
   {
+    case pilot_cmd_type_fpga_cmd:
+      pilot_fpga_handle_get_fpga_cmd(&cmd);    
     case pilot_cmd_type_fpga_state:
       pilot_fpga_handle_get_fpga_state_cmd(&cmd);
       break;

@@ -38,6 +38,10 @@ typedef struct {
   u16 max;
   u16 cur;
   u16 tick;
+  u16 comm;
+  u16 read;
+  u16 program;
+  u16 write;
 } pilot_plc_cycletimes_t;
 
 /* the maximum number of variables that can be configured */
@@ -1061,7 +1065,12 @@ static int pilot_plc_proc_cycletimes_show(struct seq_file *file, void *data)
 
   if (pilot_plc_try_get_cycletimes(100, &cycletimes) == SUCCESS)
   {
-    seq_printf(file, "min:%ius\nmax:%ius\ncurrent:%ius\n", cycletimes.min, cycletimes.max, cycletimes.cur);
+    seq_printf(file, "min:%ius\nmax:%ius\ncurrent:%ius\n  comm:%ius\n  read:%ius\n  program:%ius\n  write:%ius\n", 
+      cycletimes.min, cycletimes.max, cycletimes.cur, cycletimes.comm,
+      cycletimes.read,
+      cycletimes.program,
+      cycletimes.write
+      );
     ret = 0;
   }
   else
@@ -1633,6 +1642,11 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
     _internals.cycletimes.max = UINT16_FROM_BYTES((cmd.data + (int)pilot_plc_cycletimes_index_max));
     _internals.cycletimes.cur = UINT16_FROM_BYTES((cmd.data + (int)pilot_plc_cycletimes_index_cur));
     _internals.cycletimes.tick = UINT16_FROM_BYTES((cmd.data + (int)pilot_plc_cycletimes_index_tick));
+    _internals.cycletimes.comm = UINT16_FROM_BYTES((cmd.data + (int)pilot_plc_cycletimes_index_comm));
+    _internals.cycletimes.read = UINT16_FROM_BYTES((cmd.data + (int)pilot_plc_cycletimes_index_read));
+    _internals.cycletimes.program = UINT16_FROM_BYTES((cmd.data + (int)pilot_plc_cycletimes_index_program));
+    _internals.cycletimes.write = UINT16_FROM_BYTES((cmd.data + (int)pilot_plc_cycletimes_index_write));
+
     mb();
     _internals.is_cycletimes_updated = 1;
 

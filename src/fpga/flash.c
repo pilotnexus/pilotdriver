@@ -70,14 +70,6 @@ int xfer_spi(module_slot_t slot, uint8_t *data, int n, uint8_t cont)
 	return ret;
 }
 
-/*
-void send_spi(module_slot_t slot, uint8_t *data, int n)
-{
-    target_t target = target_t_from_module_slot_and_port(slot, module_port_1);
-    pilot_send(target, (char *)data, n);
-}
-*/
-
 void flash_read_id(module_slot_t slot, char* buffer)
 {
 	uint8_t cmd = 0x9F;

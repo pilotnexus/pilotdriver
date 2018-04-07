@@ -42,8 +42,8 @@
 #define pilot_CMD_TYPE_PLC_VARIABLES_GET "plc variables get"
 #define pilot_CMD_TYPE_PLC_VARIABLES_SET "plc variables set"
 #define pilot_CMD_TYPE_TEST_RUN "test run"
-#define pilot_CMD_TYPE_PLC_VARIABLE_GET "plc single variable get"
-#define pilot_CMD_TYPE_PLC_VARIABLE_SET "plc single variable set"
+#define pilot_CMD_TYPE_PLC_VARIABLE_GET "plc var get"
+#define pilot_CMD_TYPE_PLC_VARIABLE_SET "plc var set"
 
 char* pilot_cmd_type_to_name(pilot_cmd_type_t type)
 {

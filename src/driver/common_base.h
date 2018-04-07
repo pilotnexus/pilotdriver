@@ -66,7 +66,8 @@ typedef enum
   pilot_cmd_type_plc_variable_get,          /* rpi <-> pilot command to get single variable */
   pilot_cmd_type_plc_variable_set,          /* rpi -> pilot command to write single */
   pilot_cmd_type_fpga_state,                  /* rpi <-> fpga state */
-  pilot_cmd_type_fpga_cmd
+  pilot_cmd_type_fpga_cmd,
+  pilot_cmd_type_comm_stat
 } pilot_cmd_type_t;
 
 /* enum that specifies the target of the stream communication
@@ -279,7 +280,7 @@ typedef enum
 
 typedef enum
 {
-  pilot_bufferstate_index_value = 7 /* encode the bufferstate value in the last byte */
+  pilot_bufferstate_index_value = 0 /* encode the bufferstate value in the last byte */
 } pilot_bufferstate_index_t;
 
 typedef enum
@@ -290,7 +291,7 @@ typedef enum
 
 typedef enum
 {
-  pilot_eeprom_userdata_index_number = 7 /* encode the eeprom user index in the last byte */
+  pilot_eeprom_userdata_index_number = 0 /* encode the eeprom user index in the last byte */
 } pilot_eeprom_userdata_index_t;
 
 typedef enum
@@ -309,7 +310,11 @@ typedef enum
   pilot_plc_cycletimes_index_min = 0, /* encode the min time in the first 2 bytes (0,1) */
   pilot_plc_cycletimes_index_max = 2, /* encode the max time in the bytes 2,3 */
   pilot_plc_cycletimes_index_cur = 4, /* encode the current time in bytes 4,5 */
-  pilot_plc_cycletimes_index_tick = 6  /* encode the tick in the bytes 6,7 */
+  pilot_plc_cycletimes_index_tick = 6,  /* encode the tick in the bytes 6,7 */
+  pilot_plc_cycletimes_index_comm = 8, /* encode the comm time in the bytes 8,9 */
+  pilot_plc_cycletimes_index_read = 10, /* encode the read time in the bytes 10,11 */
+  pilot_plc_cycletimes_index_program = 12, /* encode the program time in bytes 12,13*/
+  pilot_plc_cycletimes_index_write = 14  /* encode the write time in the bytes 14,15 */
 } pilot_plc_cycletimes_index_t;
 
 typedef enum
