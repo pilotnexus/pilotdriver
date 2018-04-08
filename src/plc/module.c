@@ -94,6 +94,7 @@ enum iecvarclass {
   NONE = -1,
   IN,
   OUT,
+  MEM,
   VAR,
   EXT
 };
@@ -384,6 +385,7 @@ const char * getVarClassStr(enum iecvarclass varclass)
   {
     case IN: return "IN"; break;
     case OUT: return "OUT"; break;
+    case MEM: return "MEM"; break;
     case VAR: return "VAR"; break;
     case EXT: return "EXT"; break;
     default: return "NONE"; break;
@@ -398,6 +400,8 @@ enum iecvarclass strToIECVarClass(const char *str, int len)
     var = IN;
   else if (strncmp(str, "OUT", len) == 0)
     var = OUT;
+  else if (strncmp(str, "MEM", len) == 0)
+    var = MEM;
   else if (strncmp(str, "VAR", len) == 0)
     var = VAR;
   else if (strncmp(str, "EXT", len) == 0)

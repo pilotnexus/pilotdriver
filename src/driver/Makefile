@@ -1,4 +1,4 @@
-subobj-m += pilot.o
+obj-m += pilot.o
 pilot-objs := module.o queue.o commands.o
 
 PREFIX = $(PWD)/../../build/tools/arm-bcm2708/arm-bcm2708-linux-gnueabi/bin/arm-bcm2708-linux-gnueabi-
