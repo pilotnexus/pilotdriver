@@ -307,6 +307,8 @@ static int pilot_comm_task(void *vp)
         {
           is_invalid_block_transmit = 0;
           _internals.spi_xfer.len = queue_read_seq_block(&_internals.TxQueue, (void**)&_internals.spi_xfer.tx_buf);
+          if (_internals.spi_xfer.len > 32)
+            _internals.spi_xfer.len = 32; //chunk limit, much more does not work for some reason with spi_sync
           LOG_DEBUGALL("transmitting %d bytes in TxQueue starting from %d (write is %d)", _internals.spi_xfer.len, _internals.TxQueue.read,  _internals.TxQueue.write);
         }
 
@@ -568,7 +570,7 @@ static void pilot_spi0_handle_received_cmd(pilot_cmd_t cmd)
   struct list_head *ptr;
   pilot_cmd_handler_t *handler;
 
-  LOG_DEBUGALL("pilot_spi0_handle_received_cmd() called");
+  LOG_DEBUG("pilot_spi0_handle_received_cmd: target: %x, type: %x, length: (%x), crc: %X",(int) cmd.target,(int) cmd.type, cmd.length, cmd.crc);
 
   /* handle the cmd */
   pilot_spi0_handle_received_base_cmd(&cmd);
@@ -591,7 +593,7 @@ static void pilot_spi0_handle_received_cmd_byte(target_t target, uint8_t data)
   uint32_t crcindex;
   uint8_t length_parity;
 
-#ifdef DEBUGALL
+#ifdef DEBUG
   int i;
 #endif
 
@@ -661,13 +663,16 @@ static void pilot_spi0_handle_received_cmd_byte(target_t target, uint8_t data)
     (_internals.current_cmd.index >= (_internals.current_cmd.length + pilot_cmd_t_size_without_data)) )
   {
     //int32_t crc_check = crcFast((char *) &_internals.current_cmd.cmd, sizeof(pilot_cmd_t) - (sizeof(crc)));
-    int32_t crc_check = crc((char *) &_internals.current_cmd.cmd, pilot_current_cmd_index_data_begin + _internals.current_cmd.length);
+    int checklen = pilot_current_cmd_index_data_begin + _internals.current_cmd.length;
+    int32_t crc_check = crc((char *) &_internals.current_cmd.cmd, checklen);
 
     //LOG_DEBUG("cmd completed - target: %i, type: %i", _internals.current_cmd.cmd.target, _internals.current_cmd.cmd.type);
-    LOG_DEBUGALL("pilot_received_cmd: target: %i, type: %i, data length: %u (CRC received: %X, own calculated CRC: %X)",(int) _internals.current_cmd.cmd.target,(int) _internals.current_cmd.cmd.type, _internals.current_cmd.length,_internals.current_cmd.cmd.crc, crc_check);
+    LOG_DEBUG("pilot_received_cmd: target: %x, type: %x, length: %u (%x) (CRC received: %X, own calculated CRC: %X, crc check length = %i)",
+      (int) _internals.current_cmd.cmd.target,(int) _internals.current_cmd.cmd.type, _internals.current_cmd.length,
+      _internals.current_cmd.cmd.length, _internals.current_cmd.cmd.crc, crc_check, checklen);
 
-    #ifdef DEBUGALL
-      printk("pilot data: '");
+    #ifdef DEBUG
+      printk(KERN_CONT "received: '");
 
       for(i=0;i<_internals.current_cmd.length;i++)
         printk(KERN_CONT "%x ", _internals.current_cmd.cmd.data[i]);
@@ -688,13 +693,13 @@ static void pilot_spi0_handle_received_cmd_byte(target_t target, uint8_t data)
       memcpy(&_internals.last_recv_cmd, &_internals.current_cmd.cmd, sizeof(pilot_cmd_t));
 
       /* handle the command by copy */
-      _internals.current_cmd.cmd.length = _internals.current_cmd.length;
+      _internals.current_cmd.cmd.length &= 0x7F; //remove parity bit
       pilot_spi0_handle_received_cmd(_internals.current_cmd.cmd);
     }
     else
     {
       _internals.stats.crc_errors++;
-
+      LOG_DEBUG("CRC ERROR");
     }
   }
 }
@@ -1894,7 +1899,7 @@ void pilot_send_cmd(pilot_cmd_t* cmd)
   LOG_DEBUG("pilot_send_cmd: target: %x, type: %x, length: %i (0x%x), crc: %X",(int) cmd->target,(int) cmd->type, length, cmd->length, cmd->crc);
 
   #ifdef DEBUG
-    printk(KERN_CONT "data: '");
+    printk(KERN_CONT "sent:     '");
 
     for(i=0;i< length;i++)
       printk(KERN_CONT "%x ", cmd->data[i]);

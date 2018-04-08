@@ -19,18 +19,18 @@ xc: $(addprefix xc_,$(KERNEL_VER_LIST))
 define xc_template
 xc_$(1):
 ifeq ($(DEBUG), 1)
-	@echo "BUILDING DEBUG VERSION"
-	@echo "#define DEBUG" > $(PWD)/../driver/debug.h
-else ifeq ($(DEBUG), 2)
-	@echo "BUILDING DEBUG LEVEL 2 VERSION"
-	@echo "#define DEBUG\n#define DEBUGALL" > $(PWD)/../driver/debug.h
-else
-	@echo "/* #define DEBUG */" > $(PWD)/../driver/debug.h
-endif
 	make -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(PWD) clean
 	cp $(BASE_DRV_SRC)/Module.symvers $(PWD)
-	make ARCH=arm CROSS_COMPILE=$(PREFIX) -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(PWD) modules
-	
+	make ARCH=arm CROSS_COMPILE=$(PREFIX) -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(PWD) modules EXTRA_CFLAGS="-g -DDEBUG"
+else ifeq ($(DEBUG), 2)
+	make -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(PWD) clean
+	cp $(BASE_DRV_SRC)/Module.symvers $(PWD)
+	make ARCH=arm CROSS_COMPILE=$(PREFIX) -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(PWD) modules EXTRA_CFLAGS="-g -DDEBUG"
+else
+	make -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(PWD) clean
+	cp $(BASE_DRV_SRC)/Module.symvers $(PWD)
+	make ARCH=arm CROSS_COMPILE=$(PREFIX) -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(PWD) modules EXTRA_CFLAGS="-g -DDEBUG"
+endif	
 endef
 
 $(foreach xc,$(KERNEL_VER_LIST),$(eval $(call xc_template,$(xc))))

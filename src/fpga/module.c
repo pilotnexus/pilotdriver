@@ -71,13 +71,30 @@ static int pilot_fpga_try_get_fpga_state(module_slot_t slot, int timeout, int8_t
  return timedout ? 0 : 1;
 }
 
-static void pilot_fpga_send_fpga_cmd(module_slot_t slot, uint8_t *data, int size)
+static void pilot_fpga_send_fpga_cmd(module_slot_t slot, uint8_t *data, uint16_t size)
 {
+  int cmdDataLength = size + 2;
+  int lentmp = (cmdDataLength >> 2) << 2;
   pilot_cmd_t cmd;
+
+  if (lentmp != cmdDataLength) //adjust for 4 length
+    cmdDataLength = lentmp + 4;
+
+  if (cmdDataLength > pilot_cmd_t_data_size)
+    cmdDataLength = pilot_cmd_t_data_size;
+
+  if (size > pilot_cmd_t_data_size-2)
+    size = pilot_cmd_t_data_size-2;
+
+  LOG_DEBUG("pilot_fpga_send_fpga_cmd(), cmd data length=%i (%i), actual data length=%i",  
+    MSG_LEN(cmdDataLength), cmdDataLength, size);
+
+
   cmd.target = target_t_from_module_slot_and_port(slot, 0);
-  memcpy(&cmd.data, data, size);
+  memcpy(cmd.data, (void *)&size, 2);
+  memcpy(&cmd.data[2], data, size);
   cmd.type = pilot_cmd_type_fpga_cmd;
-  cmd.length = MSG_LEN(size);
+  cmd.length = MSG_LEN(cmdDataLength);
   pilot_send_cmd(&cmd);
 }
 
@@ -86,14 +103,14 @@ int pilot_fpga_try_send_fpga_cmd(module_slot_t slot, uint8_t *data, int size, in
   unsigned long timestamp;
   int timedout = 0;
 
-  LOG_DEBUG("calling pilot_fpga_send_fpga_cmd()");
+  LOG_DEBUGALL("calling pilot_fpga_send_fpga_cmd()");
 
   pilot_fpga_send_fpga_cmd(slot, data, size);
 
   /* choose a point in time thats timeout ms in the future */
   timestamp = jiffies + (timeout * HZ / 1000);
 
-  while (!m_internals.modules[slot].is_updated)
+  while (!m_internals.cmd[slot].is_updated)
   {
     if (time_after(jiffies, timestamp))
     {
@@ -104,7 +121,14 @@ int pilot_fpga_try_send_fpga_cmd(module_slot_t slot, uint8_t *data, int size, in
     udelay(100);
   }
 
-  m_internals.modules[slot].is_updated = 0;
+  if (timedout == 0) {
+    if (size > pilot_cmd_t_data_size-2)
+      size = pilot_cmd_t_data_size-2;
+
+    memcpy(data, &m_internals.cmd[slot].cmd_buffer[2], size);
+  }
+
+  m_internals.cmd[slot].is_updated = 0;
 
  return timedout ? 0 : 1;
 }
@@ -472,11 +496,17 @@ static int pilot_fpga_callback_can_assign(const pilot_module_type_t *module_type
 
 static void pilot_fpga_handle_get_fpga_cmd(pilot_cmd_t *cmd)
 {
+  uint32_t length = cmd->length << 2;
   module_slot_t slot = target_t_get_module_slot(cmd->target);
 
-  m_internals.cmd[slot].length = cmd->length << 2;
   mb();
-  memcpy((void *)m_internals.cmd[slot].buffer, (void *)cmd->data, m_internals.cmd[slot].length);
+  if (length > pilot_cmd_t_data_size)
+    length = pilot_cmd_t_data_size;
+
+  LOG_DEBUG("pilot_fpga_handle_get_fpga_cmd() received reply for module %i with message length of %i", slot, length);
+
+  if (slot < MODULES_COUNT)
+    memcpy(m_internals.cmd[slot].cmd_buffer, (void *)cmd->data, length);
   mb();
   m_internals.cmd[slot].is_updated = 1;
 }
@@ -486,7 +516,7 @@ static void pilot_fpga_handle_get_fpga_state_cmd(pilot_cmd_t *cmd)
 {
   module_slot_t slot = target_t_get_module_slot(cmd->target);
 
-  m_internals.modules[slot].done = (uint8_t)cmd->data[3];
+  m_internals.modules[slot].done = (uint8_t)cmd->data[2];
 
   mb();
   m_internals.modules[slot].is_updated = 1;
@@ -500,8 +530,10 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
   {
     case pilot_cmd_type_fpga_cmd:
       pilot_fpga_handle_get_fpga_cmd(&cmd);    
+      ret = pilot_cmd_handler_status_handled;
     case pilot_cmd_type_fpga_state:
       pilot_fpga_handle_get_fpga_state_cmd(&cmd);
+      ret = pilot_cmd_handler_status_handled;
       break;
     default: ret = pilot_cmd_handler_status_ignored; break;
   }

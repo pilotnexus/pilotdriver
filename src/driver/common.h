@@ -17,7 +17,6 @@
 #define __COMMON_H__
 
 #include "common_base.h"
-#include "debug.h"
 
 /* #define DEBUG */
 #define SUCCESS 0

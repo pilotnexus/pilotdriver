@@ -1,4 +1,4 @@
-obj-m += pilot.o
+subobj-m += pilot.o
 pilot-objs := module.o queue.o commands.o
 
 PREFIX = $(PWD)/../../build/tools/arm-bcm2708/arm-bcm2708-linux-gnueabi/bin/arm-bcm2708-linux-gnueabi-
@@ -19,16 +19,13 @@ define xc_template
 xc_$(1):
 ifeq ($(DEBUG), 1)
 	@echo "BUILDING DEBUG VERSION"
-	@echo "#define DEBUG" > $(PWD)/debug.h
 	make -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(PWD) clean
 	make ARCH=arm CROSS_COMPILE=$(PREFIX) -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(PWD) modules EXTRA_CFLAGS="-g -DDEBUG"
 else ifeq ($(DEBUG), 2)
 	@echo "BUILDING DEBUG LEVEL 2 VERSION"
-	@echo "#define DEBUG\n#define DEBUGALL" > $(PWD)/debug.h
 	make -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(PWD) clean
-	make ARCH=arm CROSS_COMPILE=$(PREFIX) -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(PWD) modules EXTRA_CFLAGS="-g -DDEBUG"
+	make ARCH=arm CROSS_COMPILE=$(PREFIX) -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(PWD) modules EXTRA_CFLAGS="-g -DDEBUG -DDEBUGALL"
 else
-	@echo "/* #define DEBUG */" > $(PWD)/debug.h
 	make -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(PWD) clean
 	make ARCH=arm CROSS_COMPILE=$(PREFIX) -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(PWD) modules
 endif

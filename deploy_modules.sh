@@ -1,5 +1,10 @@
 #!/bin/bash
 
+echo "building $2"
+
+cd src
+make xc_$2
+
 echo "unloading modules from $1"
 sshpass -praspberry ssh -o StrictHostKeyChecking=no pi@$1 "sudo rmmod pilot_fpga; sudo rmmod pilot_io;sudo rmmod pilot_tty;sudo rmmod pilot_slcd;sudo rmmod pilot_plc;sudo rmmod pilot_rtc;sudo rmmod pilot;mkdir ~/pilotmodules"
 
@@ -12,3 +17,5 @@ sshpass -praspberry scp -o StrictHostKeyChecking=no ./rtc/pilot_rtc.ko pi@$1:~/p
 sshpass -praspberry scp -o StrictHostKeyChecking=no ./fpga/pilot_fpga.ko pi@$1:~/pilotmodules/
 
 sshpass -praspberry ssh -o StrictHostKeyChecking=no pi@$1 "sudo insmod ~/pilotmodules/pilot.ko;sudo insmod ~/pilotmodules/pilot_io.ko;sudo insmod ~/pilotmodules/pilot_tty.ko;sudo insmod ~/pilotmodules/pilot_slcd.ko;sudo insmod ~/pilotmodules/pilot_plc.ko;sudo insmod ~/pilotmodules/pilot_rtc.ko; sudo  insmod ~/pilotmodules/pilot_fpga.ko"
+
+cd ..

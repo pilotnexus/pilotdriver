@@ -1,3 +1,6 @@
+#ifndef __MODULE_H__
+#define __MODULE_H__
+
 #include <linux/module.h>
 #include <linux/wait.h>       /* waitqueue */
 #include <linux/mutex.h>   /* mutex */
@@ -21,6 +24,7 @@ typedef struct {
 
 typedef struct {
   uint8_t buffer[pilot_cmd_t_data_size];
+  uint8_t cmd_buffer[pilot_cmd_t_data_size];
   uint32_t length;
   volatile int is_updated;
 } fpga_cmd_buffer_t;
@@ -35,3 +39,5 @@ typedef struct {
   volatile int recv_buf_index;
   wait_queue_head_t receive_queue;
 } internals_t;
+
+#endif

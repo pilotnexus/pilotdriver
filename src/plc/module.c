@@ -324,7 +324,7 @@ static void pilot_plc_send_get_variable_cmd(uint16_t varnumber)
 
   cmd.data[8] = varnumber & 0xFF; 
   cmd.data[9] = varnumber >> 8; 
-  cmd.length = MSG_LEN(4);
+  cmd.length = MSG_LEN(12);
 
   pilot_send_cmd(&cmd);
 }
@@ -1616,14 +1616,24 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
 
     case pilot_cmd_type_plc_variable_set:
     number = *((uint16_t *)&cmd.data[8]) & 0xFFF;
+    LOG_DEBUG("pilot_callback_cmd_received() received plc_state_set answer, varnum=%i (max=%i)", number,  _internals.variables_count);
     if (number < _internals.variables_count)
     {
-      number = *((uint16_t *)&cmd.data[8]) & 0xFFF;
-      //LOG_DEBUG("pilot_callback_cmd_received() received pilot_cmd_type_plc_variable_set answer, variable number %i", number);
-      memcpy(_internals.variables[number]->value, cmd.data, 8);
-      _internals.variables[number]->is_variable_updated = true;
-    
-    }    ret = pilot_cmd_handler_status_handled;
+      if (mutex_lock_interruptible(&access_lock))
+        return -ERESTARTSYS;
+
+      _internals.variables[number]->flags = *((uint16_t *)&cmd.data[8]) & 0xF000;
+      //memcpy(_internals.variables[number]->value, cmd.data, 8); //actual var length...
+      while (kfifo_avail(&_internals.variables[number]->fifo) < 8)
+        ret = kfifo_out(&_internals.variables[number]->fifo, dummy, 8); //get rid of old value when fifo is full
+
+      kfifo_in(&_internals.variables[number]->fifo,cmd.data, 8);
+
+      mutex_unlock(&access_lock);
+
+      wake_up_poll(&_internals.variables[number]->in_queue, POLLIN);
+    }
+    ret = pilot_cmd_handler_status_handled;
     break;
 
     /* we're receiving the answer to the plc_state_get command */
