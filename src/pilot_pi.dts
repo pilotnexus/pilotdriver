@@ -38,6 +38,8 @@
                 spi-max-frequency = <0x7a120>;
 				status = "okay";
 				data_m2r-gpios = <&gpio 27 0>;
+                boot-gpios = <&gpio 4 0>;
+                reset-gpios = <&gpio 17 0>;
             };
 
             pilot@1 {
@@ -48,6 +50,8 @@
                 spi-max-frequency = <0x7a120>;
 				status = "okay";
 				data_m2r-gpios = <&gpio 27 0>;
+                boot-gpios = <&gpio 4 0>;
+                reset-gpios = <&gpio 17 0>;
             };
 	};
     };
