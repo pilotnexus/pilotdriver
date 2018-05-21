@@ -11,6 +11,7 @@
 #include "queue.h"           // fifo queue, circle buffered
 #include "pilotstm.h"         // pilot <-> stm communication defines
 #include "commands.h"        // pilot_cmd_type_to_name
+#include "stm32flash.h"        // pilot_cmd_type_to_name
 
 #include <linux/module.h>    // needed by all modules
 #include <linux/kernel.h>    // needed for KERN_INFO
@@ -21,7 +22,7 @@
 #include <linux/delay.h>       // needed for udelay()
 #include <linux/proc_fs.h>   // needed for functions to manage /proc/xxx files
 #include <linux/seq_file.h>  /* sequential file handles the read/write calls to /proc/files */
-#include <asm/uaccess.h>     // needed for copy_from_user() function
+#include <linux/uaccess.h>     // needed for copy_from_user() function
 #include <asm/atomic.h>      // needed for atomic_cmpxchg() function
 #include <linux/spinlock.h>  // needed for spinlock_t and it's functions
 #include <linux/kthread.h>   // kthread_run()
@@ -141,6 +142,8 @@ static uint crc(const char *data, int len)
 
 /* declare the file operations for the /proc/pilot/ files - the initialization is done after after the necessary functions are defined */
 static const struct file_operations proc_pilot_spiclk_fops,
+                                    proc_pilot_reset_fops,
+                                    // proc_pilot_firmware_fops,
                                     proc_pilot_stats_fops,
                                     proc_pilot_last_recv_cmd_fops,
                                     proc_pilot_module_type_fops,
@@ -157,6 +160,32 @@ module_init(rpc_init);
 
 /* module exit point function, gets called when unloading the module */
 module_exit(rpc_exit);
+
+static int assign_gpio(struct device *dev, int* pin, int direction, const char* pin_name)
+{
+  uint32_t ret;
+  char gpio_name[100];
+  strcpy(gpio_name, pin_name);
+  strcat(gpio_name, "-gpios");
+  *pin = of_get_named_gpio(dev->of_node, gpio_name, 0);
+  if (gpio_is_valid(*pin))
+  {
+    LOG_DEBUG("gpio=%d valid", *pin);
+    ret = devm_gpio_request_one(dev, *pin, direction, pin_name);
+    if (ret)
+    {
+      LOG(KERN_ERR, "Failed to request GPIO (%d): error %d", *pin, ret);
+    }
+    else
+    {
+      LOG_DEBUG("Request GPIO (%d) successful", *pin);
+
+      return 1;
+    }
+  }
+
+  return 0;
+}
 
 static int32_t pilot_spi_probe(struct spi_device * spi)
 {
@@ -187,6 +216,16 @@ static int32_t pilot_spi_probe(struct spi_device * spi)
 
     if (np)
     {
+      if (assign_gpio(&spi->dev, &_internals.data_m2r_gpio, GPIOF_IN, "data_m2r")) 
+      {
+            // install the irq handler
+          _internals.irq_data_m2r = rpc_irq_data_m2r_init(_internals.data_m2r_gpio);
+      }
+
+      //assign_gpio(&spi->dev, &_internals.reset_gpio, GPIOF_OUT_INIT_LOW, "reset");
+      //assign_gpio(&spi->dev, &_internals.boot_gpio, GPIOF_OUT_INIT_LOW, "boot");
+
+      /*
       _internals.data_m2r_gpio = of_get_named_gpio(np, "data_m2r-gpios", 0);
       if (gpio_is_valid(_internals.data_m2r_gpio))
       {
@@ -200,10 +239,11 @@ static int32_t pilot_spi_probe(struct spi_device * spi)
         {
           LOG_DEBUG("Request GPIO (%d) successful", _internals.data_m2r_gpio);
 
-            /* install the irq handler */
+            // install the irq handler
           _internals.irq_data_m2r = rpc_irq_data_m2r_init(_internals.data_m2r_gpio);
         }
       }
+    */
     }
 
     //spi setup completed, start communication thread
@@ -225,7 +265,9 @@ static int32_t pilot_spi_remove(struct spi_device * spi)
     rpc_irq_data_m2r_deinit(_internals.irq_data_m2r);
 
     // free the gpios
-    devm_gpio_free(&_internals.spi0->dev, _internals.data_m2r_gpio);
+    devm_gpio_free(&spi->dev, _internals.data_m2r_gpio);
+    //devm_gpio_free(&spi->dev, _internals.reset_gpio);
+    //devm_gpio_free(&spi->dev, _internals.boot_gpio);
   }
 
   return 0;
@@ -802,6 +844,8 @@ static char* pilot_proc_module_dir_names[] = { "module1", "module2", "module3", 
 #define pilot_proc_module_fid "fid" /* filename: /proc/pilot/moduleX/fid */
 static char* pilot_proc_module_eeprom_user_names[] = { "user00", "user01", "user02", "user03", "user04", "user05", "user06", "user07", "user08", "user09", "user10", "user11" };
 #define pilot_proc_spiclk_name "spiclk" /* filename: /proc/pilot/spiclk */
+#define pilot_proc_reset_name "reset" /* filename: /proc/pilot/reset */
+#define pilot_proc_firmware_name "firmware" /* filename: /proc/pilot/firmware */
 #define pilot_proc_stats_name "stats"/* /proc/pilot/stats */
 #define pilot_proc_last_recv_cmd_name "last_recv_cmd"  /* /proc/pilot/last_recv_cmd */
 #define pilot_proc_test_name "test" /* /proc/pilot/test */
@@ -825,6 +869,12 @@ static void rpc_proc_init(void)
 
   /* register /proc/pilot/spiclk file */
   proc_create_data(pilot_proc_spiclk_name, 0666 /* r+w */, base_dir, &proc_pilot_spiclk_fops, NULL);
+
+  /* register /proc/pilot/reset file */
+  // proc_create_data(pilot_proc_reset_name, 0666 /* r+w */, base_dir, &proc_pilot_reset_fops, NULL);
+
+  /* register /proc/pilot/firmware file */
+  // proc_create_data(pilot_proc_firmware_name, 0666 /* r+w */, base_dir, &proc_pilot_firmware_fops, NULL);
   
   /* register the /proc/pilot/stats file */
   proc_create_data(pilot_proc_stats_name, 0666 /* r+w */, base_dir, &proc_pilot_stats_fops, NULL);
@@ -883,6 +933,12 @@ static void rpc_proc_deinit(void)
 
   /* remove /proc/pilot/spiclk */
   remove_proc_entry(pilot_proc_spiclk_name, _internals.proc_pilot_dir);
+
+  /* remove /proc/pilot/reset */
+  // remove_proc_entry(pilot_proc_reset_name, _internals.proc_pilot_dir);
+
+  /* remove /proc/pilot/firmware */
+  // remove_proc_entry(pilot_proc_firmware_name, _internals.proc_pilot_dir);
 
   /* remove /proc/pilot/stats */
   remove_proc_entry(pilot_proc_stats_name, _internals.proc_pilot_dir);
@@ -1334,6 +1390,10 @@ static void rpc_unassign_slot(module_slot_t slot)
    }
 }
 
+/************************
+* /proc/pilot/spiclk
+************************/
+
 static int pilot_proc_pilot_spiclk_show(struct seq_file *file, void *data)
 {
   seq_printf(file, "%i\n", _internals.spiclk);
@@ -1378,6 +1438,124 @@ static const struct file_operations proc_pilot_spiclk_fops = {
   .release = single_release,
   .write   = pilot_proc_pilot_spiclk_write
 };
+
+/************************
+* /proc/pilot/reset
+************************/
+
+/*
+static int pilot_proc_pilot_reset_show(struct seq_file *file, void *data)
+{
+  seq_printf(file, "%i\n", gpio_get_value(_internals.reset_gpio));
+  return 0;
+}
+
+static int pilot_proc_pilot_reset_write(struct file* file, const char __user *buf, size_t count, loff_t *off)
+{
+  int new_value, ret=-EINVAL;
+
+   // try to get an int value from the user
+  if (kstrtoint_from_user(buf, count, 10, &new_value) != SUCCESS)
+    ret = -EINVAL; // return an error if the conversion fails
+  else
+  {
+    if (new_value == 0 || new_value == 1)
+    {
+       gpio_set_value(_internals.reset_gpio, new_value);    
+      ret = count;
+    }
+   }
+  return ret;
+}
+
+static int pilot_proc_pilot_reset_open(struct inode *inode, struct file *file)
+{
+  return single_open(file, pilot_proc_pilot_reset_show, NULL);
+}
+
+// file operations for /proc/pilot/reset
+static const struct file_operations proc_pilot_reset_fops = {
+  .owner   = THIS_MODULE,
+  .open    = pilot_proc_pilot_reset_open,
+  .read    = seq_read,
+  .llseek  = seq_lseek,
+  .release = single_release,
+  .write   = pilot_proc_pilot_reset_write
+};
+*/
+
+/************************
+* /proc/pilot/firmware
+************************/
+
+/*
+
+static int pilot_proc_pilot_firmware_show(struct seq_file *file, void *data)
+{
+  uint8_t aRxBuffer[256];
+  uint8_t aTxBuffer[256];
+  uint8_t version;
+  uint16_t chipID;
+
+  // go into boot mode
+  gpio_set_value(_internals.boot_gpio, 1);    
+  gpio_set_value(_internals.reset_gpio, 1);
+  msleep(100);    
+  gpio_set_value(_internals.reset_gpio, 0);
+  msleep(100);    
+
+  LOG_DEBUG("BL_Init()");
+  BL_Init(_internals.spi0);
+  LOG_DEBUG("BL_Get_Command()");
+  BL_Get_Command(aRxBuffer);
+  LOG_DEBUG("BL_Get_Version()");
+  version = BL_GetVersion_Command();
+  LOG_DEBUG("BL_GetID()");
+  chipID = BL_GetID_Command();
+
+  LOG_DEBUG("Version %x", version);
+  LOG_DEBUG("chipID %x", chipID);
+
+  //seq_printf(file, "%i\n", _internals.spiclk);
+  return 0;
+}
+
+static int pilot_proc_pilot_firmware_write(struct file* file, const char __user *buf, size_t count, loff_t *off)
+{
+  int new_value, ret=-EINVAL;
+
+  // go into boot mode
+  gpio_set_value(_internals.boot_gpio, 1);    
+  gpio_set_value(_internals.reset_gpio, 1);
+  msleep(100);    
+  gpio_set_value(_internals.reset_gpio, 0);
+
+  //start file write
+
+
+  return ret;
+}
+
+static int pilot_proc_pilot_firmware_open(struct inode *inode, struct file *file)
+{
+  return single_open(file, pilot_proc_pilot_firmware_show, NULL);
+}
+
+// file operations for /proc/pilot/firmware
+static const struct file_operations proc_pilot_firmware_fops = {
+  .owner   = THIS_MODULE,
+  .open    = pilot_proc_pilot_firmware_open,
+  .read    = seq_read,
+  .llseek  = seq_lseek,
+  .release = single_release,
+  .write   = pilot_proc_pilot_firmware_write
+};
+
+*/
+
+/************************
+* /proc/pilot/stats
+************************/
 
 static int pilot_proc_pilot_stats_show(struct seq_file *file, void *data)
 {

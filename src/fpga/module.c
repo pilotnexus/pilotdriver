@@ -5,7 +5,7 @@
 #include <linux/slab.h>       /* needed for kmalloc() */
 #include <linux/wait.h>       /* waitqueue */
 #include <linux/delay.h>       // needed for msleep()
-#include <asm/uaccess.h>     // needed for copy_from_user() function
+#include <linux/uaccess.h>     // needed for copy_from_user() function
 #include "module.h"           /* include defines that describe the module */
 #include "../driver/export.h"
 #include "../driver/queue.h"
@@ -222,9 +222,10 @@ static int pilot_fpga_proc_bitstream_open(struct inode *inode, struct file *file
 static int pilot_fpga_proc_bitstream_flush(struct file *file, fl_owner_t id)
 {
   /* get the module slot */
+  #ifdef DEBUG
   module_slot_t slot = (int)PDE_DATA(file->f_inode);
-
   LOG_DEBUG("called pilot_fpga_proc_bitstream_flush() for slot %i", (int)slot);
+  #endif
 
   return 0;
 }
@@ -280,9 +281,11 @@ static int pilot_fpga_proc_bitstream_write(struct file *file, const char __user 
 
 static int pilot_fpga_proc_bitstream_release(struct inode *inode, struct file *file)
 {
-  module_slot_t slot = (int)PDE_DATA(file->f_inode);
 
+  #ifdef DEBUG
+  module_slot_t slot = (int)PDE_DATA(file->f_inode);
   LOG_DEBUG("called pilot_fpga_proc_bitstream_release() for slot %i", (int)slot);
+  #endif
 
   //pilot_fpga_try_get_fpga_state(slot, m_internals.timeout, UNSELECT_CHIP, IN_RESET); //change to NO_RESET when hardware ready
 

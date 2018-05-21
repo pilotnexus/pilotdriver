@@ -10,7 +10,7 @@
 #include "queue.h"
 #include "pilotstm.h"
 
-#define USE_SWAIT_QUEUE
+//#define USE_SWAIT_QUEUE
 
 #ifdef USE_SWAIT_QUEUE
 #include <linux/swait.h>     //
@@ -111,6 +111,9 @@ typedef struct
   pilot_current_cmd_t current_cmd; /* collects the current command that is being received from the stm */
 
   int data_m2r_gpio; /* gpio for the m2r data pin */
+  int reset_gpio; /* gpio for the reset pin */
+  int boot_gpio; /* gpio for the boot pin */
+  
   int irq_data_m2r; /* the requested irq handler, stores return valued of rpc_irq_init() and used as argument for rpc_irq_deinit() */
   
   struct proc_dir_entry* proc_pilot_dir; /* base proc directory '/proc/pilot' */

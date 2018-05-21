@@ -110,7 +110,6 @@ void flash_wait(module_slot_t slot)
 bool flash_prog(module_slot_t slot, int addr, char *data, int n)
 {
   int retryCount = 0;
-	uint8_t command[4];
   uint8_t buffer[270];
 
 
