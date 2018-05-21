@@ -25,11 +25,11 @@ ifeq ($(DEBUG), 1)
 else ifeq ($(DEBUG), 2)
 	make -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(PWD) clean
 	cp $(BASE_DRV_SRC)/Module.symvers $(PWD)
-	make ARCH=arm CROSS_COMPILE=$(PREFIX) -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(PWD) modules EXTRA_CFLAGS="-g -DDEBUG"
+	make ARCH=arm CROSS_COMPILE=$(PREFIX) -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(PWD) modules EXTRA_CFLAGS="-g -DDEBUG --DDEBUGALL"
 else
 	make -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(PWD) clean
 	cp $(BASE_DRV_SRC)/Module.symvers $(PWD)
-	make ARCH=arm CROSS_COMPILE=$(PREFIX) -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(PWD) modules EXTRA_CFLAGS="-g -DDEBUG"
+	make ARCH=arm CROSS_COMPILE=$(PREFIX) -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(PWD) modules
 endif	
 endef
 
