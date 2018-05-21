@@ -1,5 +1,16 @@
 #!/bin/bash
 
+if [ "$#" -ne 3 ]
+then
+  echo "Build Pilot Driver Modules"
+  echo ""
+  echo "Usage: getkernel [IP] [user] [password]"
+  echo "IP: The IP address of a Raspberry Pi containing the kernel version for which the drivers should be compiled (make sure that it is accessible via SSH)"
+  echo "user: SSH Username"
+  echo "password: SSH Password"
+  exit 1
+fi
+
 if ping -c 1 $1 &> /dev/null
 then
   echo "Host ok"
@@ -15,38 +26,39 @@ if [ -z "$DIR" ]; then
  exit 1;
 fi
 
-mkdir ~/build/rpi
-cd ~/build/rpi/
+mkdir ~/work/pilot/pilotdriver/build/rpi
+cd ~/work/pilot/pilotdriver/build/rpi
 if [ -d "$DIR" ]; then
   # Control will enter here if $DIRECTORY exists.
   echo "$DIR already exists..updating"
-  #rm -R "$DIR" || { echo 'removing directory ~/rpi/$DIR failed' ; exit 1; }
+  #rm -R "$DIR" || { echo 'removing directory ./rpi/$DIR failed' ; exit 1; }
 else
   echo "creating directory $DIR"
-  mkdir "$DIR" || { echo 'creating directory ~/build/rpi/$DIR failed' ; exit 1; }
+  mkdir "$DIR" || { echo 'creating directory ./rpi/$DIR failed' ; exit 1; }
 fi
 
 HASH=$(sshpass -p $3 ssh -o StrictHostKeyChecking=no -q $2@$1 "FIRMWARE_HASH=\$(/bin/zgrep '* firmware as of' /usr/share/doc/raspberrypi-bootloader/changelog.Debian.gz | head -1 | awk '{ print \$5 }') && /usr/bin/wget https://raw.github.com/raspberrypi/firmware/\$FIRMWARE_HASH/extra/git_hash -O - 2> NUL")
 
 echo "fetching linux kernel"
-cd ~/build/rpi/linux
+cd ~/work/pilot/pilotdriver/build/rpi/linux
 git fetch || { echo 'fetch failed' ; exit 1; }
 
 echo "checking out hash $HASH"
 git checkout $HASH || { echo 'checkout failed' ; exit 1; }
 
 echo "copying kernel"
-rsync -a --info=progress2 ./ ~/build/rpi/$DIR --exclude .git  || { echo 'copy failed' ; exit 1; }
+rsync -a --info=progress2 ./ ~/work/pilot/pilotdriver/build/rpi/$DIR --exclude .git  || { echo 'copy failed' ; exit 1; }
 
 echo "preparing build"
-export CCPREFIX=/home/user/tools/arm-bcm2708/arm-bcm2708-linux-gnueabi/bin/arm-bcm2708-linux-gnueabi-
-export KERNEL_SRC="~/rpi/$DIR"
+export CCPREFIX=/home/amd/work/pilot/pilotdriver/build/tools/arm-bcm2708/arm-bcm2708-linux-gnueabi/bin/arm-bcm2708-linux-gnueabi-
+export KERNEL_SRC="~/work/pilot/pilotdriver/build/rpi/$DIR"
 
-cd ~/build/rpi/$DIR || { echo 'cd failed' ; exit 1; }
+cd ~/work/pilot/pilotdriver/build/rpi/$DIR || { echo 'cd failed' ; exit 1; }
 make mrproper
 
 sshpass -p $3 ssh -o StrictHostKeyChecking=no -q $2@$1 "sudo modprobe configs"
 sshpass -p $3 scp -o StrictHostKeyChecking=no -q $2@$1:/proc/config.gz ./
+chown $USER:$USER config.gz
 zcat config.gz > .config || { echo 'error creating .config' ; exit 1; }
 
 echo "building kernel"

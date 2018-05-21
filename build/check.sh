@@ -11,7 +11,7 @@ image="${filename}.img"
 #  exit 1
 #fi
 
-if [ ! -d "images"]; then
+if [ ! -d "images" ]; then
   mkdir images
 fi
 
@@ -33,16 +33,21 @@ echo "${partitions[1]}"
 
 cd ..
 
-if [ ! -d "boot"]; then
+if [ ! -d "boot" ]; then
   mkdir boot
 fi
 
-if [ ! -d "root"]; then
+if [ ! -d "root" ]; then
   mkdir root
 fi
 
 sudo umount ./boot
 sudo umount ./root
-sudo mount -v -o offset=${partitions[0]},gid=$(id -u $USER),uid=$(id -u $USER) -t vfat $image ./boot
-sudo mount -v -o offset=${partitions[1]} -t ext4 $image ./root
+sudo mount -v -o offset=${partitions[0]},gid=$(id -u $USER),uid=$(id -u $USER) -t vfat ./images/$image ./boot
+sudo mount -v -o offset=${partitions[1]} -t ext4 ./images/$image ./root
 sudo chown $USER:$USER ./root
+
+FIRMWARE_HASH=$(/bin/zgrep '* firmware as of' ./root/usr/share/doc/raspberrypi-bootloader/changelog.Debian.gz | head -1 | awk '{ print $5 }')
+HASH=$(wget https://raw.github.com/raspberrypi/firmware/$FIRMWARE_HASH/extra/git_hash -O - 2> NUL)
+
+
