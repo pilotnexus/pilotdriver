@@ -2,7 +2,7 @@
 #include <linux/proc_fs.h>    /* needed for functions to manage /proc/xxx files */
 #include <linux/seq_file.h>
 #include <linux/string.h>     /* included for the memset() function */
-#include <asm/gpio.h>         /* needed for struct gpio_chip, gpiochip_add(), gpiochip_remove() */
+#include <asm-generic/gpio.h>         /* needed for struct gpio_chip, gpiochip_add(), gpiochip_remove() */
 #include "module.h"           /* include defines that describe the module */
 #include "../driver/export.h"
 #include "common.h"
@@ -59,7 +59,7 @@ static void pilot_io_gpio_chip_cb_free             (struct gpio_chip* chip, unsi
 static int  pilot_io_gpio_chip_cb_direction_input  (struct gpio_chip* chip, unsigned offset);                    /* callback function for kernel gpiolib */
 static int  pilot_io_gpio_chip_cb_get              (struct gpio_chip* chip, unsigned offset);                    /* callback function for kernel gpiolib */
 static int  pilot_io_gpio_chip_cb_direction_output (struct gpio_chip* chip, unsigned offset, int value);         /* callback function for kernel gpiolib */
-static int  pilot_io_gpio_chip_cb_set_debounce     (struct gpio_chip* chip, unsigned offset, unsigned debounce); /* callback function for kernel gpiolib */
+//static int  pilot_io_gpio_chip_cb_set_debounce     (struct gpio_chip* chip, unsigned offset, unsigned debounce); /* callback function for kernel gpiolib */
 static void pilot_io_gpio_chip_cb_set              (struct gpio_chip* chip, unsigned offset, int value);         /* callback function for kernel gpiolib */
 static int  pilot_io_gpio_chip_cb_to_irq           (struct gpio_chip* chip, unsigned offset);                    /* callback function for kernel gpiolib */
 static void pilot_io_gpio_chip_cb_dbg_show         (struct seq_file *s, struct gpio_chip* chip);                 /* callback function for kernel gpiolib */
@@ -268,7 +268,7 @@ static void pilot_io_gpio_chip_init(module_slot_t slot,          /* slot number 
   gpio_chip->direction_input   = pilot_io_gpio_chip_cb_direction_input;
   gpio_chip->get               = pilot_io_gpio_chip_cb_get;
   gpio_chip->direction_output  = pilot_io_gpio_chip_cb_direction_output;
-  gpio_chip->set_debounce      = pilot_io_gpio_chip_cb_set_debounce;
+  // gpio_chip->set_debounce      = pilot_io_gpio_chip_cb_set_debounce;
   gpio_chip->set               = pilot_io_gpio_chip_cb_set;
   gpio_chip->to_irq            = pilot_io_gpio_chip_cb_to_irq;
   gpio_chip->dbg_show          = pilot_io_gpio_chip_cb_dbg_show;
@@ -686,11 +686,13 @@ static int pilot_io_gpio_chip_cb_get (struct gpio_chip* chip, unsigned offset)
   return ret;
 }
 
+/*
 static int  pilot_io_gpio_chip_cb_set_debounce(struct gpio_chip* chip, unsigned offset, unsigned debounce)
 {
   LOG_DEBUG("pilot_io_gpio_chip_cb_set_debounce(offset=%i, debounce=%i) called", offset, debounce);
   return -ENOSYS;
 }
+*/
 
 static void pilot_io_gpio_chip_cb_set(struct gpio_chip* chip, unsigned offset, int value)
 {
