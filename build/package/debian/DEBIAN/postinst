@@ -1,5 +1,8 @@
 #!/bin/sh
 
+# add overlay
+dtoverlay pilot
+
 # update the list of modules for modprobe
 depmod
 
@@ -20,3 +23,11 @@ echo "pilot_rtc"  >> /etc/modules
 echo "pilot_slcd" >> /etc/modules
 echo "pilot_plc"  >> /etc/modules
 echo "pilot_fpga"  >> /etc/modules
+
+# add config
+echo "# --- Pilot Config Start (do not modify) ---
+dtparam=spi=on
+dtoverlay=pi3-miniuart-bt
+dtoverlay=pilot
+enable_uart=1
+# --- Pilot Config End (do not modify) ---" >> /boot/config.txt

@@ -20,3 +20,9 @@ sed "/pilot_tty/d"  /etc/modules -i
 sed "/pilot_io/d"   /etc/modules -i
 sed "/pilot_fpga/d" /etc/modules -i
 sed "/pilot/d"     /etc/modules -i
+
+# remove overlay
+dtoverlay -r pilot
+
+# remove config
+sed -i -e '/# --- Pilot Config Start (do not modify) ---/,/# --- Pilot Config End (do not modify) ---/d' /boot/config.txt
