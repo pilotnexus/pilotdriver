@@ -26,3 +26,7 @@ dtoverlay -r pilot
 
 # remove config
 sed -i -e '/# --- Pilot Config Start (do not modify) ---/,/# --- Pilot Config End (do not modify) ---/d' /boot/config.txt
+
+# remove plc startup file
+rm /etc/rc3.d/S01pilot-config
+rm /etc/init.d/pilot-config

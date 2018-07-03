@@ -31,3 +31,11 @@ dtoverlay=pi3-miniuart-bt
 dtoverlay=pilot
 enable_uart=1
 # --- Pilot Config End (do not modify) ---" >> /boot/config.txt
+
+# remove console from cmdline
+sed -i /boot/cmdline.txt -e "s/console=serial0,[0-9]\+ //"
+sed -i /boot/cmdline.txt -e "s/console=ttyAMA0,[0-9]\+ //"
+
+# generate plc var loader
+chmod +x /etc/init.d/pilot-config
+ln -rs /etc/init.d/pilot-config /etc/rc3.d/S01pilot-config
