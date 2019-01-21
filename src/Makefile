@@ -40,7 +40,7 @@ xc_$(1):
 	mkdir -p $(OVERLAYSDIR); \
 	cp pilot.dtbo $(OVERLAYSDIR); \
 	sed "s/\[PACKAGENAME\]/pilot-$(1)/" $(PACKAGEDIR)/control.template | sed "s/\[VERSION\]/$(VERSION)/" > $(PACKAGEDIR)/debian/DEBIAN/control; \
-	dpkg -b $(PACKAGEDIR)/debian $(DEBDIR)/pilot-$(1).deb; \
+	fakeroot dpkg -b $(PACKAGEDIR)/debian $(DEBDIR)/pilot-$(1).deb; \
 	fi
 endef
 

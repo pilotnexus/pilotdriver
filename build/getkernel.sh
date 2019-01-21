@@ -24,6 +24,8 @@ DIR=$(sshpass -p $3 ssh -o StrictHostKeyChecking=no -q $2@$1 "uname -a" | awk '{
 if [ -z "$DIR" ]; then
  echo "Could not remotely get kernel version. Is host, username and password correct?"
  exit 1;
+else
+  echo "Building for kernel $DIR"
 fi
 
 mkdir ~/work/pilot/pilotdriver/build/rpi
@@ -55,9 +57,14 @@ export KERNEL_SRC="~/work/pilot/pilotdriver/build/rpi/$DIR"
 
 cd ~/work/pilot/pilotdriver/build/rpi/$DIR || { echo 'cd failed' ; exit 1; }
 make mrproper
-
+rm -rf ./config.gz
 sshpass -p $3 ssh -o StrictHostKeyChecking=no -q $2@$1 "sudo modprobe configs"
 sshpass -p $3 scp -o StrictHostKeyChecking=no -q $2@$1:/proc/config.gz ./
+retVal=$?
+if [ $retVal -ne 0 ]; then
+    echo "Error getting config.gz"
+    exit $retVal
+fi
 chown $USER:$USER config.gz
 zcat config.gz > .config || { echo 'error creating .config' ; exit 1; }
 

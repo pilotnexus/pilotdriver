@@ -1,7 +1,7 @@
-Package: pilot-4.14.34-v7+1110
-Version: 2.0.1
+Package: pilot-4.14.79-v7+1159
+Version: 2.0.2
 Essential: no
 Architecture: all
 Maintainer: Amescon <office@amescon.com>
-Provides: pilot-4.14.34-v7+1110
+Provides: pilot-4.14.79-v7+1159
 Description: PiloT Driver, use /proc/pilot/ filesystem to configure it
