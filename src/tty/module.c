@@ -351,7 +351,8 @@ static void pilot_tty_send_lora_set_enable(module_slot_t slot, int enable)
 	cmd.target = target_t_from_module_slot_and_port(slot, 0);
 	cmd.type = pilot_cmd_type_lora_set_enable;
 	cmd.data[(int)pilot_lora_enable_index_value] = enable ? 1 : 0;
-	pilot_send_cmd(&cmd);
+	cmd.length = MSG_LEN(4);
+  pilot_send_cmd(&cmd);
 }
 
 static void pilot_tty_send_lora_get_enable(module_slot_t slot)
@@ -429,6 +430,7 @@ static void pilot_tty_send_gps_set_enable(module_slot_t slot, int enable)
   cmd.target = target_t_from_module_slot_and_port(slot, 0);
   cmd.type = pilot_cmd_type_gps_set_enable;
   cmd.data[(int)pilot_gps_enable_index_value] = enable ? 1 : 0;
+	cmd.length = MSG_LEN(4);
   pilot_send_cmd(&cmd);
 }
 
@@ -501,6 +503,7 @@ static void pilot_tty_send_gsm_set_enable(module_slot_t slot, int enable)
   cmd.target = target_t_from_module_slot_and_port(slot, 0);
   cmd.type = pilot_cmd_type_gsm_set_enable;
   cmd.data[(int)pilot_gsm_enable_index_value] = enable ? 1 : 0;
+  cmd.length = MSG_LEN(4); // minimum payload length
   pilot_send_cmd(&cmd);
 }
 
@@ -573,6 +576,7 @@ static void pilot_tty_send_onewire_set_enable(module_slot_t slot, int enable)
   cmd.target = target_t_from_module_slot_and_port(slot, 0);
   cmd.type = pilot_cmd_type_onewire_set_enable;
   cmd.data[(int)pilot_onewire_enable_index_value] = enable ? 1 : 0;
+	cmd.length = MSG_LEN(4);
   pilot_send_cmd(&cmd);
 }
 

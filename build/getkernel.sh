@@ -28,8 +28,10 @@ else
   echo "Building for kernel $DIR"
 fi
 
-mkdir ~/work/pilot/pilotdriver/build/rpi
-cd ~/work/pilot/pilotdriver/build/rpi
+export CCPREFIX=$PWD/tools/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64/bin/arm-linux-gnueabihf-
+
+mkdir ./rpi
+cd ./rpi
 if [ -d "$DIR" ]; then
   # Control will enter here if $DIRECTORY exists.
   echo "$DIR already exists..updating"
@@ -42,20 +44,19 @@ fi
 HASH=$(sshpass -p $3 ssh -o StrictHostKeyChecking=no -q $2@$1 "FIRMWARE_HASH=\$(/bin/zgrep '* firmware as of' /usr/share/doc/raspberrypi-bootloader/changelog.Debian.gz | head -1 | awk '{ print \$5 }') && /usr/bin/wget https://raw.github.com/raspberrypi/firmware/\$FIRMWARE_HASH/extra/git_hash -O - 2> NUL")
 
 echo "fetching linux kernel"
-cd ~/work/pilot/pilotdriver/build/rpi/linux
+cd ./linux
 git fetch || { echo 'fetch failed' ; exit 1; }
 
 echo "checking out hash $HASH"
 git checkout $HASH || { echo 'checkout failed' ; exit 1; }
 
 echo "copying kernel"
-rsync -a --info=progress2 ./ ~/work/pilot/pilotdriver/build/rpi/$DIR --exclude .git  || { echo 'copy failed' ; exit 1; }
+rsync -a --info=progress2 ./ ../$DIR --exclude .git  || { echo 'copy failed' ; exit 1; }
 
 echo "preparing build"
-export CCPREFIX=/home/amd/work/pilot/pilotdriver/build/tools/arm-bcm2708/arm-bcm2708-linux-gnueabi/bin/arm-bcm2708-linux-gnueabi-
-export KERNEL_SRC="~/work/pilot/pilotdriver/build/rpi/$DIR"
+export KERNEL_SRC="$PWD/$DIR"
 
-cd ~/work/pilot/pilotdriver/build/rpi/$DIR || { echo 'cd failed' ; exit 1; }
+cd ../$DIR || { echo 'cd failed' ; exit 1; }
 make mrproper
 rm -rf ./config.gz
 sshpass -p $3 ssh -o StrictHostKeyChecking=no -q $2@$1 "sudo modprobe configs"

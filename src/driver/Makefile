@@ -2,6 +2,10 @@ obj-m += pilot.o
 pilot-objs := module.o queue.o commands.o
 
 PREFIX = $(PWD)/../../build/tools/arm-bcm2708/arm-bcm2708-linux-gnueabi/bin/arm-bcm2708-linux-gnueabi-
+ifneq ($(shell $(PREFIX)gcc --version >/dev/null 2>&1; echo $$?),0)
+	PREFIX = $(PWD)/../../build/tools/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64/bin/arm-linux-gnueabihf-
+endif
+
 KERNEL_HEADER_ROOT := $(PWD)/../../build/rpi
 KERNEL_DIR_LIST := $(shell ls -1vd $(KERNEL_HEADER_ROOT)/* | grep linux-rpi)
 KERNEL_VER_LIST := $(shell ls -1vd $(KERNEL_HEADER_ROOT)/* | grep linux-rpi | awk '{ sub(/.*linux-rpi-/,""); print }')
