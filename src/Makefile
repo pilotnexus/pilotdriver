@@ -52,9 +52,9 @@ coral:
 	cp coral_files/pilot_coral.dtbo $(coral_overlaysdir);\
 	echo "overlay=pilot_coral" >  $(coral_overlaysdir)/overlays.txt;\
 	cp coral_files/boot.scr $(coral_overlaysdir);\
-	sed "s/\[PACKAGENAME\]/$(localname)/" $(PACKAGEDIR)/control.template | sed "s/\[VERSION\]/$(VERSION)/" > $(PACKAGEDIR)/debian/DEBIAN/control;\
+	sed "s/\[PACKAGENAME\]/$(localname)/" $(coral_packagedir)/control.template | sed "s/\[VERSION\]/$(VERSION)/" > $(coral_packagedir)/debian/DEBIAN/control;\
 	echo "all good, creating the .deb";\
-	fakeroot dpkg -b $(PACKAGEDIR)/debian $(DEBDIR)/$(localname).deb; \
+	fakeroot dpkg -b $(coral_packagedir)/debian $(DEBDIR)/$(localname).deb; \
 	fi
 # -------------------------------------------------------------------------------------------
 xc: $(addprefix xc_,$(KERNEL_VER_LIST))

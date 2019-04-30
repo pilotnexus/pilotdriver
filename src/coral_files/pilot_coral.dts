@@ -34,7 +34,26 @@
     };
 
 
-    fragment@1 {
+   fragment@1   {
+
+	target-path="/";
+
+
+	__overlay__ {
+
+		pwm@30680000 {
+			status = "disabled";
+		};
+
+
+	};
+
+    };
+
+
+
+
+    fragment@2 {
 	target-path = "/ecspi@30820000";
 
 	__overlay__ {
