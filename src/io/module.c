@@ -980,7 +980,7 @@ static void pilot_io_proc_deinit_counter_module(module_slot_t slot)
 }
 
 /* callback function that gets called when the content of the file /proc/pilot/moduleX/counterY is written */
-static int pilot_io_proc_pilot_module_counter_write(struct file *file, const char *__user buf, size_t count, loff_t *off)
+static ssize_t pilot_io_proc_pilot_module_counter_write(struct file *file, const char *__user buf, size_t count, loff_t *off)
 {
   int ret, data;
   u64 new_value;
@@ -1130,7 +1130,7 @@ static int pilot_io_proc_pilot_io_gpio_base_open(struct inode *inode, struct fil
   return single_open(file, pilot_io_proc_pilot_io_gpio_base_show, PDE_DATA(inode));
 }
 
-static int pilot_io_proc_pilot_io_gpio_base_write(struct file* file, const char* __user buf, size_t count, loff_t* off)
+static ssize_t pilot_io_proc_pilot_io_gpio_base_write(struct file* file, const char* __user buf, size_t count, loff_t* off)
 {
   int ret, new_value;
 
@@ -1275,7 +1275,7 @@ static int pilot_io_proc_pilot_module_aio20_show(struct seq_file *file, void *da
   return ret;
 }
 
-static int pilot_io_proc_pilot_module_aio20_write(struct file* file, const char* __user buf, size_t count, loff_t* off)
+static ssize_t pilot_io_proc_pilot_module_aio20_write(struct file* file, const char* __user buf, size_t count, loff_t* off)
 {
   int ret, new_value;
 

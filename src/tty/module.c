@@ -675,7 +675,7 @@ static void pilot_tty_proc_deinit(module_slot_t slot, pilot_tty_module_type_t ty
 
 /* enable_lora file operations */
 
-static int pilot_tty_proc_pilot_module_enable_lora_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
+static ssize_t pilot_tty_proc_pilot_module_enable_lora_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
 	int new_value, data;
 
@@ -724,7 +724,7 @@ static const struct file_operations proc_pilot_module_enable_lora_fops = {
 
 /* enable_gps file operations */
 
-static int pilot_tty_proc_pilot_module_enable_gps_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
+static ssize_t pilot_tty_proc_pilot_module_enable_gps_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
   int new_value, data;
 
@@ -772,7 +772,7 @@ static const struct file_operations proc_pilot_module_enable_gps_fops = {
 
 /* enable_gsm file operations */
 
-static int pilot_tty_proc_pilot_module_enable_gsm_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
+static ssize_t pilot_tty_proc_pilot_module_enable_gsm_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
   int new_value, data, ret;
   data = (int)PDE_DATA(file->f_inode);
@@ -834,7 +834,7 @@ static int pilot_tty_proc_pilot_module_enable_onewire_show(struct seq_file *file
   return ret;
 }
 
-static int pilot_tty_proc_pilot_module_enable_onewire_write(struct file* file, const char* __user buf, size_t count, loff_t *off)
+static ssize_t pilot_tty_proc_pilot_module_enable_onewire_write(struct file* file, const char* __user buf, size_t count, loff_t *off)
 {
   int new_value, data;
 

@@ -552,7 +552,7 @@ void debug_print_var_line(int number, enum iecvarclass type, enum iectypes iecva
   LOG_DEBUGALL("variable nr: %i:  '%.*s'\n", number, varLength, variable);
 }
 
-static int pilot_plc_proc_var_read(struct file *filp, char __user *buf, size_t count, loff_t *ppos)
+static ssize_t pilot_plc_proc_var_read(struct file *filp, char __user *buf, size_t count, loff_t *ppos)
 {
   unsigned int copied=0;
   int ret = 0;
@@ -641,7 +641,7 @@ static int pilot_plc_proc_var_open(struct inode *inode, struct file *file)
   return 0;
 }
 
-static int pilot_plc_proc_var_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
+static ssize_t pilot_plc_proc_var_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
     int ret = -EINVAL;
     bool use_set_variable = true;
@@ -796,7 +796,7 @@ static int pilot_plc_proc_var_sub_show(struct seq_file *file, void *data)
   return 0;
 }
 
-static int pilot_plc_proc_var_sub_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
+static ssize_t pilot_plc_proc_var_sub_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
   int new_value, ret, waitret;
   pilot_plc_variable_t *variable = (pilot_plc_variable_t *)PDE_DATA(file->f_inode);
@@ -846,7 +846,7 @@ static int pilot_plc_proc_var_force_show(struct seq_file *file, void *data)
   return 0;
 }
 
-static int pilot_plc_proc_var_force_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
+static ssize_t pilot_plc_proc_var_force_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
   int new_value, ret;
   pilot_plc_variable_t *variable = (pilot_plc_variable_t *)PDE_DATA(file->f_inode);
@@ -1159,7 +1159,7 @@ static int pilot_plc_proc_state_open(struct inode *inode, struct file *file)
   return single_open(file, pilot_plc_proc_state_show, PDE_DATA(inode));
 }
 
-static int pilot_plc_proc_state_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
+static ssize_t pilot_plc_proc_state_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
   int new_value, ret;
 
@@ -1219,7 +1219,7 @@ static int pilot_plc_proc_variables_state_open(struct inode *inode, struct file 
   return single_open(file, pilot_plc_proc_variables_state_show, PDE_DATA(inode));
 }
 
-static int pilot_plc_proc_variables_state_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
+static ssize_t pilot_plc_proc_variables_state_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
   //first remove all variables if existent
   freevariables();
@@ -1390,7 +1390,7 @@ static void pilot_plc_check_send_variables_readconfig(void)
   }
 }
 
-static int pilot_plc_proc_vars_readconfig_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
+static ssize_t pilot_plc_proc_vars_readconfig_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
   int ret;
   u16 number;  /* buffer for kstrtoX */
@@ -1520,7 +1520,7 @@ static void pilot_plc_check_send_variables_writeconfig(void)
   }
 }
 
-static int pilot_plc_proc_vars_writeconfig_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
+static ssize_t pilot_plc_proc_vars_writeconfig_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
   int ret, i, start, length, var_index, is_forced;
   u16 number;
@@ -1687,7 +1687,7 @@ static int pilot_plc_proc_vars_value_open(struct inode *inode, struct file *file
   return single_open(file, pilot_plc_proc_vars_value_show, PDE_DATA(inode));
 }
 
-static int pilot_plc_proc_vars_value_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
+static ssize_t pilot_plc_proc_vars_value_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
   int i;
 

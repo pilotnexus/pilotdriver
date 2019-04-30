@@ -133,7 +133,7 @@ int pilot_fpga_try_send_fpga_cmd(module_slot_t slot, uint8_t *data, int size, in
  return timedout ? 0 : 1;
 }
 
-static int pilot_fpga_proc_bitstream_read(struct file *filp, char *buf, size_t count, loff_t *f_pos)
+static ssize_t pilot_fpga_proc_bitstream_read(struct file *filp, char *buf, size_t count, loff_t *f_pos)
 {
  int module_index = (int)PDE_DATA(filp->f_inode);
  int ret = 0, chunk, pos = (int)*f_pos;
@@ -230,7 +230,7 @@ static int pilot_fpga_proc_bitstream_flush(struct file *file, fl_owner_t id)
   return 0;
 }
 
-static int pilot_fpga_proc_bitstream_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
+static ssize_t pilot_fpga_proc_bitstream_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
   int addr = 0, blocksize, bytes_written = 0;
   
@@ -310,7 +310,7 @@ static const struct file_operations proc_bitstream_fops = {
 
 static const char pilot_fpga_proc_cmd_name[] = "cmd";
 
-static int pilot_fpga_proc_cmd_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
+static ssize_t pilot_fpga_proc_cmd_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
   int bytes_count = count <= pilot_cmd_t_data_size ? count : pilot_cmd_t_data_size;
   

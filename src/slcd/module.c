@@ -111,7 +111,7 @@ static int pilot_slcd_proc_buffer_flush(struct file *file, fl_owner_t id)
   return 0;
 }
 
-static int pilot_slcd_proc_buffer_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
+static ssize_t pilot_slcd_proc_buffer_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
   module_slot_t slot;
   int i, ret = -EINVAL;
@@ -248,7 +248,7 @@ static int pilot_slcd_proc_resolution_open(struct inode *inode, struct file *fil
   return single_open(file, pilot_slcd_proc_resolution_show, PDE_DATA(inode));
 }
 
-static int pilot_slcd_proc_resolution_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
+static ssize_t pilot_slcd_proc_resolution_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
   slcd_resolution_t *res;
   int i, width = -1, height = -1;
@@ -311,7 +311,7 @@ static int pilot_slcd_proc_bitmap_open(struct inode *inode, struct file *file)
   return single_open(file, pilot_slcd_proc_bitmap_show, PDE_DATA(inode));
 }
 
-static int pilot_slcd_proc_bitmap_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
+static ssize_t pilot_slcd_proc_bitmap_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
   int ret, changed;
   pilot_bmp_header_t bmp_header;

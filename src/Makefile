@@ -18,13 +18,44 @@ OVERLAYSDIR:="$(PACKAGEDIR)/debian/boot/overlays"
 DEBDIR:="$(OUT_DIR)/deb"
 VERSION:=$(shell cat version)
 
+bold=$(shell tput bold)
+normal=$(shell tput sgr0)
+localname=pilot-$(shell uname -r)
+
+coral_packagedir:="$(OUT_DIR)/build/$(localname)"
+coral_modulesdir:="$(coral_packagedir)/debian/lib/modules"
+coral_overlaysdir:="$(coral_packagedir)/debian/boot"
+
+
 help:
 	@echo "Cross-compile for version ${VERSION}"
 	@echo ""
 	@for x in $(KERNEL_VER_LIST); do printf '  make xc_%s  %.*s  build kernel module %s\n' $$x $$(expr 32 - $$( echo $$x | wc -c ) ) "................................." $$x; done
 	@echo "  make all  ................................  build all kernel modules"
 	@echo ""
+	@echo "Or type $(bold)'make coral'$(normal) to build for the google coral board"
+	@echo ""
+
+coral:
+	@echo "$(bold)Building drivers for Google Coral board: $(localname)$(normal)"
+	- mkdir $(OUT_DIR)/bin
+	- rm -rf $(OUT_DIR)/bin/*
+	- $(foreach DRV,$(DRIVER_LIST),cd $(PWD)/$(DRV) && make local && cp $(PWD)/$(DRV)/*.ko $(OUT_DIR)/bin/;)
 	
+	@if [ `ls -1 $(OUT_DIR)/bin | wc -l` -ne $(words $(DRIVER_NAMES_LIST)) ]; then \
+	echo "$(bold)not all driver files compiled. please check $(OUT_DIR)/bin/ for missing kernel drivers$(normal)"; \
+	else \
+	echo "$(bold)create package$(normal) ";\
+	rm -rf $(coral_packagedir);\
+	cp -r  $(PACKAGEDIR) $(coral_packagedir);\
+	cp $(OUT_DIR)/bin/* $(coral_modulesdir);\
+	cp coral_files/pilot_coral.dtbo $(coral_overlaysdir);\
+	echo "overlay=pilot_coral" >  $(coral_overlaysdir)/overlays.txt;\
+	cp coral_files/boot.scr $(coral_overlaysdir);\
+	sed "s/\[PACKAGENAME\]/$(localname)/" $(PACKAGEDIR)/control.template | sed "s/\[VERSION\]/$(VERSION)/" > $(PACKAGEDIR)/debian/DEBIAN/control;\
+	echo "all good, creating the .deb";\
+	fakeroot dpkg -b $(PACKAGEDIR)/debian $(DEBDIR)/$(localname).deb; \
+	fi
 # -------------------------------------------------------------------------------------------
 xc: $(addprefix xc_,$(KERNEL_VER_LIST))
 

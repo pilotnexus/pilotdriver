@@ -20,6 +20,7 @@ _NCrunch_driver/
 *.mod.c
 *.save
 *.deb
+*.tmp
 package/debian/DEBIAN/control
 *.swp
 driver/debug.h

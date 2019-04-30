@@ -16,6 +16,15 @@ help:
 	
 # -------------------------------------------------------------------------------------------
 
+
+local:
+	
+	@echo "BUILDING DUMMY DRIVER"
+	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules EXTRA_CFLAGS="-g -DDEBUG -DDEBUGALL"
+
+
+
+
 mod: $(addprefix mod_,$(KERNEL_VER_LIST))
 
 define mod_template

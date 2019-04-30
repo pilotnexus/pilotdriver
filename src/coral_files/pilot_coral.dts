@@ -1,0 +1,107 @@
+/dts-v1/;
+/plugin/;
+
+
+/// compile like this
+/// dtc -I dts -O dtb -o pilot_coral.dtbo -b 0 -@ pilot_coral.dts 
+
+
+
+/ {
+
+   compatible = "fsl,imx8mq-phanbell\0fsl,imx8mq";
+   /* disable spi-dev for spi0.0 & spi0.1 */
+   fragment@0   {
+
+	target-path="/ecspi@30820000";
+
+
+	__overlay__ {
+		status = "okay";
+
+
+
+		spidev@1 {
+			status = "disabled";
+		};
+
+		spidev@0 {
+			status = "dsiabled";
+		};
+
+	};
+
+    };
+
+
+    fragment@1 {
+	target-path = "/ecspi@30820000";
+
+	__overlay__ {
+            #address-cells = <1>;
+            #size-cells = <0>;
+            pinctrl-names = "default";
+
+            pilot@0 {
+                compatible = "pilot";
+                #address-cells = <0x1>;
+                #size-cells = <0x0>;
+                reg = <0>;
+// the frequency is currently ignored by the pilot kernel module and fixed to 25.000.000 hz
+                spi-max-frequency = <0x7a120>;
+		status = "okay";
+
+/*
+ finding this values is a lot o work
+
+
+	mendel@hopeful-ibis:~/pilotdriver-master/src$ dtc -q -I fs /proc/device-tree | grep /gpio@30200000
+		gpio0 = "/gpio@30200000";
+	mendel@hopeful-ibis:~/pilotdriver-master/src$ dtc -q -I fs /proc/device-tree | grep -A 10 gpio@30200000 
+	
+	gpio@30200000 {
+		compatible = "fsl,imx8mq-gpio\0fsl,imx35-gpio";
+		gpio-controller;
+		#interrupt-cells = <0x02>;
+		interrupts = <0x00 0x40 0x04 0x00 0x41 0x04>;
+		phandle = <0x52>;
+
+  so the first byte here is the phandle of the chip, the second byte is the pin and the third byte the default state
+
+  data_m2r-gpios = <0x52 0x06 0x00>;
+
+this is pin 6 connected to GPIO chip 0
+the phandle attribute of the gpio0  alias is what we need as an offset.
+
+
+those pins are connected to GPIOchip #4 as the datasheet revealed:
+https://www.nxp.com/docs/en/data-sheet/IMX8MDQLQIEC.pdf
+
+                boot-gpios =     <0x26 0x1B 0x00>;
+                reset-gpios =    <0x26 0x1A 0x00>;
+
+*/
+ 	        data_m2r-gpios = <0x52 0x06 0x00>;
+                boot-gpios =     <0x26 0x1B 0x00>;
+                reset-gpios =    <0x26 0x1A 0x00>;
+
+            };
+
+            pilot@1 {
+                compatible = "pilot";
+                #address-cells = <0x1>;
+                #size-cells = <0x0>;
+                reg = <1>;     
+                spi-max-frequency = <0x7a120>;
+		status = "okay";
+// 	        data_m2r-gpios = <&gpio0 6 0>;
+//                boot-gpios =     <&gpio4 155 0>;
+//                reset-gpios =    <&gpio4 154 0>;
+            };
+	};
+    };
+
+
+
+
+};

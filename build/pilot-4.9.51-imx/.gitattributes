@@ -1,0 +1,3 @@
+debian/DEBIAN/postrm eol=lf
+debian/DEBIAN/postinst eol=lf
+control.template eol=lf

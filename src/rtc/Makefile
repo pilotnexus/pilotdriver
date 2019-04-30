@@ -17,6 +17,14 @@ help:
 	
 # -------------------------------------------------------------------------------------------
 
+
+
+local:
+		@echo "BUILDING RTC DRIVER"
+		make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules EXTRA_CFLAGS="-g -DDEBUG -DDEBUGALL"
+
+
+
 xc: $(addprefix xc_,$(KERNEL_VER_LIST))
 
 define xc_template

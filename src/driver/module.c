@@ -183,6 +183,10 @@ static int assign_gpio(struct device *dev, int* pin, int direction, const char* 
       return 1;
     }
   }
+  else
+  {
+    LOG(KERN_ERR, "devm_gpio_request_one() failed for GPIO (%d)", *pin);
+  }
 
   return 0;
 }
@@ -192,9 +196,11 @@ static int32_t pilot_spi_probe(struct spi_device * spi)
   struct device_node *np = spi->dev.of_node;
   uint32_t ret;
 
+  LOG_DEBUG("pilot_spi_probe called with cs=%d", spi->chip_select);
+
   if (spi->chip_select == 0)
   {
-    LOG_DEBUG("pilot_spi_probe() for CS0 called");
+     LOG_DEBUG("pilot_spi_probe() for CS0 called");
     //spi->modalias = "pilot-device-driver";
     spi->mode = SPI_MODE_0;
     spi->max_speed_hz = 25000000; //todo - get from devicetree
@@ -224,28 +230,11 @@ static int32_t pilot_spi_probe(struct spi_device * spi)
 
       //assign_gpio(&spi->dev, &_internals.reset_gpio, GPIOF_OUT_INIT_LOW, "reset");
       //assign_gpio(&spi->dev, &_internals.boot_gpio, GPIOF_OUT_INIT_LOW, "boot");
-
-      /*
-      _internals.data_m2r_gpio = of_get_named_gpio(np, "data_m2r-gpios", 0);
-      if (gpio_is_valid(_internals.data_m2r_gpio))
-      {
-        LOG_DEBUG("mr2 gpio=%d valid", _internals.data_m2r_gpio);
-        ret = devm_gpio_request_one(&spi->dev, _internals.data_m2r_gpio, GPIOF_IN, "data_m2r");
-        if (ret)
-        {
-          LOG(KERN_ERR, "Failed to request GPIO (%d): error %d", _internals.data_m2r_gpio, ret);
-        }
-        else
-        {
-          LOG_DEBUG("Request GPIO (%d) successful", _internals.data_m2r_gpio);
-
-            // install the irq handler
-          _internals.irq_data_m2r = rpc_irq_data_m2r_init(_internals.data_m2r_gpio);
-        }
-      }
-    */
     }
-
+    else 
+    {
+      LOG(KERN_ERR, "Error getting SPI device!");
+    }
     //spi setup completed, start communication thread
     pilot_comm_thread = kthread_run(pilot_comm_task, NULL, "K_PILOT_COMM_TASK");
 
@@ -985,7 +974,7 @@ static void rpc_proc_deinit(void)
   remove_proc_entry(pilot_proc_directory_name, NULL);
 }
 
-static int pilot_proc_pilot_stats_write(struct file *file, const char *buf, size_t count, loff_t *off)
+static ssize_t pilot_proc_pilot_stats_write(struct file *file, const char *buf, size_t count, loff_t *off)
 {
   int new_value, ret;
 
@@ -1022,7 +1011,7 @@ static void pilot_set_module_hid(module_slot_t module, const pilot_eeprom_hid_t 
 #define EEPROM_TIMEOUT 1000
 
 /* description: callback function that gets called by the kernel, when /proc/pilot/moduleX/hid is written to */
-static int pilot_proc_pilot_module_hid_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
+static ssize_t pilot_proc_pilot_module_hid_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
   pilot_eeprom_hid_t hid; int not_copied;
   
@@ -1057,7 +1046,7 @@ static void pilot_set_module_fid(module_slot_t module, const pilot_eeprom_fid_t 
   pilot_send_cmd(&cmd);
 }
 
-static int pilot_proc_pilot_module_fid_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
+static ssize_t pilot_proc_pilot_module_fid_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
   pilot_eeprom_fid_t fid; int not_copied;
 
@@ -1076,7 +1065,7 @@ static int pilot_proc_pilot_module_fid_write(struct file *file, const char __use
 }
 
 /* description: callback function that gets called, when the /proc/pilotmoduleX is written to */
-static int pilot_proc_pilot_module_type_write(struct file *file, const char *buf, size_t count, loff_t *off)
+static ssize_t pilot_proc_pilot_module_type_write(struct file *file, const char *buf, size_t count, loff_t *off)
 {
   int notCopied, slot;
   pilot_module_type_t module_type;
@@ -1400,7 +1389,7 @@ static int pilot_proc_pilot_spiclk_show(struct seq_file *file, void *data)
   return 0;
 }
 
-static int pilot_proc_pilot_spiclk_write(struct file* file, const char __user *buf, size_t count, loff_t *off)
+static ssize_t pilot_proc_pilot_spiclk_write(struct file* file, const char __user *buf, size_t count, loff_t *off)
 {
   int new_value, ret=-EINVAL;
 
@@ -1958,7 +1947,7 @@ static int pilot_proc_module_eeprom_user_open(struct inode *inode, struct file *
   return single_open(file, pilot_proc_module_eeprom_user_show, PDE_DATA(inode));
 }
 
-static int pilot_proc_pilot_module_eeprom_user_write (struct file *file, const char __user *buf, size_t count, loff_t *off)
+static ssize_t pilot_proc_pilot_module_eeprom_user_write (struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
   pilot_eeprom_data_t data; int not_copied;
   
