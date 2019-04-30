@@ -34,6 +34,11 @@
     };
 
 
+
+
+
+// we need to remove the PWM driver or we wont be able to use GPIO14 (pin 22) 
+
    fragment@1   {
 
 	target-path="/";
