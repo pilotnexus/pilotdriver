@@ -9,8 +9,8 @@ endif
 
 KERNEL_HEADER_ROOT := $(PWD)/../build/rpi
 
-KERNEL_DIR_LIST := $(shell ls -1vd $(KERNEL_HEADER_ROOT)/* | grep linux-rpi)
-KERNEL_VER_LIST := $(shell ls -1vd $(KERNEL_HEADER_ROOT)/* | grep linux-rpi | awk '{ sub(/.*linux-rpi-/,""); print }')
+KERNEL_DIR_LIST := $(shell ls -1vd $(KERNEL_HEADER_ROOT)/* 2> /dev/null | grep linux-rpi)
+KERNEL_VER_LIST := $(shell ls -1vd $(KERNEL_HEADER_ROOT)/* 2> /dev/null | grep linux-rpi | awk '{ sub(/.*linux-rpi-/,""); print }')
 
 PACKAGEDIR:="$(OUT_DIR)/build/package"
 MODULESDIR:="$(PACKAGEDIR)/debian/lib/modules"
