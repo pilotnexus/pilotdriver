@@ -1,7 +1,7 @@
-Package: pilot-4.9.51-imx
+Package: pilot-4.14.98-v7+1200
 Version: 2.0.3
 Essential: no
 Architecture: all
 Maintainer: Amescon <office@amescon.com>
-Provides: pilot-4.9.51-imx
+Provides: pilot-4.14.98-v7+1200
 Description: PiloT Driver, use /proc/pilot/ filesystem to configure it

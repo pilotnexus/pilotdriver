@@ -67,7 +67,8 @@ typedef enum
   pilot_cmd_type_plc_variable_set,           /* 0x2B rpi -> pilot command to write single */
   pilot_cmd_type_fpga_state,                 /* 0x2C rpi <-> fpga state */
   pilot_cmd_type_fpga_cmd,                   /* 0x2D rpi <-> fpga cmd */
-  pilot_cmd_type_comm_stat                   /* 0x2E rpi <-> stats */
+  pilot_cmd_type_comm_stat,                  /* 0x2E rpi <-> stats */
+  pilot_cmd_type_fwinfo                      /* 0x2F rpi <-> pilot command get fw info */
 } pilot_cmd_type_t;
 
 /* enum that specifies the target of the stream communication
@@ -370,6 +371,7 @@ typedef pilot_eeprom_data_t pilot_eeprom_fid_t;
 
 #define MODULE_TYPE_LENGTH 8 //needs to be multiple of 4!
 
+#define MODULE_FWINFO_LENGTH 44
 /* type of a module */
 typedef struct {
   uint8_t name[MODULE_TYPE_LENGTH];

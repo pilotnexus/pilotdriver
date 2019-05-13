@@ -30,3 +30,5 @@ autobuild/images/
 autobuild/root/
 /build/rpi/
 /build/images/
+/build/tools/
+**/ipch/

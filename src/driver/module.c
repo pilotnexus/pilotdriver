@@ -153,7 +153,8 @@ static const struct file_operations proc_pilot_spiclk_fops,
                                     proc_pilot_module_fid_fops,
                                     proc_pilot_module_eeprom_user_fops,
                                     proc_pilot_test_fops,
-                                    proc_pilot_uid_fops;
+                                    proc_pilot_uid_fops,
+                                    proc_pilot_fwinfo_fops;
 
 /* module entry point function, gets called when loading the module */
 module_init(rpc_init);
@@ -280,7 +281,7 @@ static void pilot_internals_init()
 
   INIT_WQ_HEAD(_internals.test_result_is_updated_wq);
   INIT_WQ_HEAD(_internals.uid_is_updated_wq);
-
+  INIT_WQ_HEAD(_internals.fwinfo_is_updated_wq);
   start_spi_us = end_spi_us = ktime_to_us(ktime_get());
   _internals.spiclk = 4000000;
 }
@@ -578,7 +579,13 @@ static void pilot_spi0_handle_received_base_cmd(pilot_cmd_t *cmd)
     _internals.modules[target_t_get_module_slot(cmd->target)].type_is_updated = 1; /* mark the type as updated */
     WAIT_WAKEUP(_internals.modules[target_t_get_module_slot(cmd->target)].type_is_updated_wq);
     break;
-
+  case pilot_cmd_type_fwinfo:
+    /* update fw info */
+    for (i = 0; i < pilot_cmd_t_data_size && i < MODULE_FWINFO_LENGTH; i++)
+      _internals.fwinfo[i] = cmd->data[i];
+    _internals.fwinfo_is_updated = 1; /* mark fwinfo as updated */
+    WAIT_WAKEUP(_internals.fwinfo_is_updated_wq);
+    break;
   case pilot_cmd_type_test_run:
     /* update the test results */
     _internals.test_result.index_failed = (int)cmd->data[(int)pilot_test_run_index_failed_index];
@@ -839,7 +846,7 @@ static char* pilot_proc_module_eeprom_user_names[] = { "user00", "user01", "user
 #define pilot_proc_last_recv_cmd_name "last_recv_cmd"  /* /proc/pilot/last_recv_cmd */
 #define pilot_proc_test_name "test" /* /proc/pilot/test */
 #define pilot_proc_uid_name "uid" /* filename: /proc/pilot/uid */
-
+#define pilot_proc_fwinfo_name "fwinfo" /* filename: /proc/pilot/fwinfo */
 #define RPC_PROC_BUFFER_SIZE 255
 
 #define PROC_USER_DATA_GET_INT(module_index, data_index) ( (module_index << 8) | (data_index) )
@@ -876,6 +883,9 @@ static void rpc_proc_init(void)
 
   /* register the /proc/pilot/eeprom file */
   proc_create_data(pilot_proc_uid_name, 0 /* r */, base_dir, &proc_pilot_uid_fops, NULL);
+
+  /* register the /proc/pilot/fwinfo file */
+  proc_create_data(pilot_proc_fwinfo_name, 0 /* r */, base_dir, &proc_pilot_fwinfo_fops, NULL);
 
   /* register a directory foreach module (/proc/pilot/module1-4) */
   for (i = 0; i < MODULES_COUNT; i++)
@@ -1773,6 +1783,60 @@ static const struct file_operations proc_pilot_uid_fops = {
   .release = single_release
 };
 
+/*  */
+static int pilot_try_get_fwinfo(int timeout)
+{
+  pilot_cmd_t cmd;
+  int is_timedout = 0;
+
+  /* reset the uid_is_updated flag */
+  _internals.fwinfo_is_updated = 0;
+
+  /* send the request */
+  memset(&cmd, 0, sizeof(pilot_cmd_t));
+  cmd.target = target_base;
+  cmd.type = pilot_cmd_type_fwinfo;
+  cmd.length = 0; //no payload
+
+  pilot_send_cmd(&cmd);
+
+  /* wait until the test_result is updated or the timeout occurs */
+  if (WAIT_EVENT_INTERRUPTIBLE_TIMEOUT(_internals.fwinfo_is_updated_wq, _internals.fwinfo_is_updated != 0, (timeout * HZ / 1000)) <= 0)
+  {
+    is_timedout = 1;
+    LOG_INFO("pilot_try_get_uid() timedout while waiting for uid!");
+  }
+
+  return is_timedout ? -1 : SUCCESS;
+}
+
+static int pilot_proc_pilot_fwinfo_show(struct seq_file *file, void *data)
+{
+  int ret;
+  if (pilot_try_get_fwinfo(1000) == SUCCESS)
+  {
+    _internals.fwinfo[MODULE_FWINFO_LENGTH] = 0; //safety terminating char
+    seq_printf(file, "%s\n", _internals.fwinfo);
+    ret = 0;
+  }
+  else
+    ret = -EFAULT;
+
+  return ret;
+}
+
+static int pilot_proc_pilot_fwinfo_open(struct inode *inode, struct file *file)
+{
+  return single_open(file, pilot_proc_pilot_fwinfo_show, NULL);
+}
+
+static const struct file_operations proc_pilot_fwinfo_fops = {
+  .owner   = THIS_MODULE,
+  .open    = pilot_proc_pilot_fwinfo_open,
+  .read    = seq_read,
+  .llseek  = seq_lseek,
+  .release = single_release
+};
 
 static int pilot_proc_pilot_module_type_show(struct seq_file *file, void *data)
 {

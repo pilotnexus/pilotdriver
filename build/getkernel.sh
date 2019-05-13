@@ -1,4 +1,5 @@
 #!/bin/bash
+THREADS=4
 
 if [ "$#" -ne 3 ]
 then
@@ -19,6 +20,11 @@ else
   exit 2;
 fi
 
+if [ ! -d "./tools" ]; then
+  echo "Tools not yet installed, installing..."
+  git clone https://github.com/raspberrypi/tools.git
+fi
+ 
 DIR=$(sshpass -p $3 ssh -o StrictHostKeyChecking=no -q $2@$1 "uname -a" | awk '{ printf tolower($1) "-rpi-" $3} $4 ~ /#/ { print substr($4,2) }') || { echo 'error getting uname' ; exit 1; }
 
 if [ -z "$DIR" ]; then
@@ -41,9 +47,13 @@ else
   mkdir "$DIR" || { echo 'creating directory ./rpi/$DIR failed' ; exit 1; }
 fi
 
-HASH=$(sshpass -p $3 ssh -o StrictHostKeyChecking=no -q $2@$1 "FIRMWARE_HASH=\$(/bin/zgrep '* firmware as of' /usr/share/doc/raspberrypi-bootloader/changelog.Debian.gz | head -1 | awk '{ print \$5 }') && /usr/bin/wget https://raw.github.com/raspberrypi/firmware/\$FIRMWARE_HASH/extra/git_hash -O - 2> NUL")
+HASH=$(sshpass -p $3 ssh -o StrictHostKeyChecking=no -q $2@$1 "FIRMWARE_HASH=\$(/bin/zgrep '* firmware as of' /usr/share/doc/raspberrypi-bootloader/changelog.Debian.gz | head -1 | awk '{ print \$5 }') && /usr/bin/wget https://raw.github.com/raspberrypi/firmware/\$FIRMWARE_HASH/extra/git_hash -O - 2> /dev/null")
 
 echo "fetching linux kernel"
+if [ ! -d "./linux" ]; then
+  echo "Kernel source tree does not exist yet, cloning..."
+  git clone https://github.com/raspberrypi/linux.git
+fi
 cd ./linux
 git fetch || { echo 'fetch failed' ; exit 1; }
 
@@ -71,6 +81,6 @@ zcat config.gz > .config || { echo 'error creating .config' ; exit 1; }
 
 echo "building kernel"
 
-make ARCH=arm CROSS_COMPILE=${CCPREFIX} oldconfig
-make ARCH=arm CROSS_COMPILE=${CCPREFIX}
+make ARCH=arm CROSS_COMPILE=${CCPREFIX} -j$THREADS oldconfig
+make ARCH=arm CROSS_COMPILE=${CCPREFIX} -j$THREADS
 

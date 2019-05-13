@@ -139,6 +139,11 @@ typedef struct
   stream_callback_t stream_callback;
 
   bool pilot_recv_buffer_full;
+
+  /* fw info */
+  char fwinfo[MODULE_FWINFO_LENGTH+1];
+  volatile int fwinfo_is_updated;                     /* set when the module type is updated */
+  DEF_WQ_HEAD(fwinfo_is_updated_wq);
 } internals_t;
 
 #endif
