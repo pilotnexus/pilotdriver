@@ -1,0 +1,78 @@
+Package: pilot-4.14.34-v7+1110
+Version: 2.0.2
+Architecture: all
+Essential: no
+Maintainer: Amescon <office@amescon.com>
+Provides: pilot-4.14.34-v7+1110
+Filename: deb/pilot-4.14.34-v7+1110.deb
+Size: 38076
+MD5sum: 41963f9ee41e62fcfa3fe1e442dae794
+SHA1: ff1ac2254249b0f4a7d74ccad19ddea97da45ec6
+SHA256: 10ac3179ea23a8a0c78a66b148dbae24574a870ecb20898597c55d1e15d5c045
+Description: PiloT Driver, use /proc/pilot/ filesystem to configure it
+
+Package: pilot-4.14.50-v7+1122
+Version: 2.0.2
+Architecture: all
+Essential: no
+Maintainer: Amescon <office@amescon.com>
+Provides: pilot-4.14.50-v7+1122
+Filename: deb/pilot-4.14.50-v7+1122.deb
+Size: 38100
+MD5sum: 88898fc6e005ea8f47a242641ae80500
+SHA1: 43ba1b4aaa3aeb5bef4e2109c6e582903d845f27
+SHA256: a94465d96d777fdf83c50644f9d1ccf4fa410f57d0163158fd9dbebd8a11f8aa
+Description: PiloT Driver, use /proc/pilot/ filesystem to configure it
+
+Package: pilot-4.14.71-v7+1145
+Version: 2.0.1
+Architecture: all
+Essential: no
+Maintainer: Amescon <office@amescon.com>
+Provides: pilot-4.14.71-v7+1145
+Filename: deb/pilot-4.14.71-v7+1145.deb
+Size: 38296
+MD5sum: 68966d65f56c9ca0705548fb46fc61c2
+SHA1: 0413f4613c5bb070c76d50435b28982b93a9a497
+SHA256: 1a72aa86094b135dcf24ddcba473a24ad176b4bb55bab459c4341b5f2a294d3a
+Description: PiloT Driver, use /proc/pilot/ filesystem to configure it
+
+Package: pilot-4.4.38-v7+938
+Version: 2.0.2
+Architecture: all
+Essential: no
+Maintainer: Amescon <office@amescon.com>
+Provides: pilot-4.4.38-v7+938
+Filename: deb/pilot-4.4.38-v7+938.deb
+Size: 38238
+MD5sum: b35ab8f9005bb724b21f109a917e3825
+SHA1: b346624a719a18f12c0b30b3ebb4efd1f43623fc
+SHA256: ed9da4836eb77f9aa4c4b3f0af56390d76d088d219f15b43c18d9e2a68e57438
+Description: PiloT Driver, use /proc/pilot/ filesystem to configure it
+
+Package: pilot-4.9.59-v7+1047
+Version: 2.0.2
+Architecture: all
+Essential: no
+Maintainer: Amescon <office@amescon.com>
+Provides: pilot-4.9.59-v7+1047
+Filename: deb/pilot-4.9.59-v7+1047.deb
+Size: 38190
+MD5sum: 6c6bc1220b416703c2f428f646658b14
+SHA1: be5cc6e8087dcb67a4c07dcd4b24e2f655e38c8d
+SHA256: 4750fddbdf8cdac129f2390524205d73a098cf44b647dc44caedb906624fcf11
+Description: PiloT Driver, use /proc/pilot/ filesystem to configure it
+
+Package: pilot-4.9.80-v7+1098
+Version: 2.0.2
+Architecture: all
+Essential: no
+Maintainer: Amescon <office@amescon.com>
+Provides: pilot-4.9.80-v7+1098
+Filename: deb/pilot-4.9.80-v7+1098.deb
+Size: 38142
+MD5sum: f66a108c347fdf51de24e9ba81c92467
+SHA1: 224ebdc75580f69ce69ea740fcf17cb88f24aa4a
+SHA256: cd13db7cbacba43480eec5a15c5e1ac783cea9c96fc6439015c94ac0d18b9538
+Description: PiloT Driver, use /proc/pilot/ filesystem to configure it
+

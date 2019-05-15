@@ -1,7 +1,0 @@
-Package: [PACKAGENAME]
-Version: [VERSION]
-Essential: no
-Architecture: all
-Maintainer: Amescon <office@amescon.com>
-Provides: [PACKAGENAME]
-Description: PiloT Driver, use /proc/pilot/ filesystem to configure it

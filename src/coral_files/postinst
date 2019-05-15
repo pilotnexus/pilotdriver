@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # add overlay
-dtoverlay pilot
+#dtoverlay pilot
 
 # update the list of modules for modprobe
 depmod
@@ -25,18 +25,26 @@ echo "pilot_plc"  >> /etc/modules
 echo "pilot_fpga"  >> /etc/modules
 
 # add config
-echo "# --- Pilot Config Start (do not modify) ---
-dtparam=spi=on
-dtoverlay=pi3-miniuart-bt
-dtoverlay=pilot
-enable_uart=1
-core_freq=250
-init_uart_clock=3000000
+#echo "# --- Pilot Config Start (do not modify) ---
+#dtparam=spi=on
+#dtoverlay=pi3-miniuart-bt
+#dtoverlay=pilot
+#enable_uart=1
+#core_freq=250
+#init_uart_clock=3000000
 # --- Pilot Config End (do not modify) ---" >> /boot/config.txt
 
 # remove console from cmdline
-sed -i /boot/cmdline.txt -e "s/console=serial0,[0-9]\+ //"
-sed -i /boot/cmdline.txt -e "s/console=ttyAMA0,[0-9]\+ //"
+#sed -i /boot/cmdline.txt -e "s/console=serial0,[0-9]\+ //"
+#sed -i /boot/cmdline.txt -e "s/console=ttyAMA0,[0-9]\+ //"
+
+
+cp /boot/boot.scr /boot/boot.scr.bak
+cp /tmp/boot.scr  /boot.scr
+
+echo "overlay=pilot_coral" >  /boot/overlays.txt;
+
+
 
 # generate plc var loader
 chmod +x /etc/init.d/pilot-config

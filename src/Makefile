@@ -20,10 +20,12 @@ VERSION:=$(shell cat version)
 
 bold=$(shell tput bold)
 normal=$(shell tput sgr0)
-localname=pilot-$(shell uname -r)
+
+kernel=$(shell uname -r)
+localname=pilot-$(kernel)
 
 coral_packagedir:="$(OUT_DIR)/build/$(localname)"
-coral_modulesdir:="$(coral_packagedir)/debian/lib/modules"
+coral_modulesdir:="$(coral_packagedir)/debian/lib/modules/$(kernel)/"
 coral_overlaysdir:="$(coral_packagedir)/debian/boot"
 
 
@@ -45,17 +47,9 @@ coral:
 	@if [ `ls -1 $(OUT_DIR)/bin | wc -l` -ne $(words $(DRIVER_NAMES_LIST)) ]; then \
 	echo "$(bold)not all driver files compiled. please check $(OUT_DIR)/bin/ for missing kernel drivers$(normal)"; \
 	else \
-	echo "$(bold)create package$(normal) ";\
-	rm -rf $(coral_packagedir);\
-	cp -r  $(PACKAGEDIR) $(coral_packagedir);\
-	cp $(OUT_DIR)/bin/* $(coral_modulesdir);\
-	cp coral_files/pilot_coral.dtbo $(coral_overlaysdir);\
-	echo "overlay=pilot_coral" >  $(coral_overlaysdir)/overlays.txt;\
-	cp coral_files/boot.scr $(coral_overlaysdir);\
-	sed "s/\[PACKAGENAME\]/$(localname)/" $(coral_packagedir)/control.template | sed "s/\[VERSION\]/$(VERSION)/" > $(coral_packagedir)/debian/DEBIAN/control;\
-	echo "all good, creating the .deb";\
-	fakeroot dpkg -b $(coral_packagedir)/debian $(DEBDIR)/$(localname).deb; \
+	coral_files/setup.sh;
 	fi
+
 # -------------------------------------------------------------------------------------------
 xc: $(addprefix xc_,$(KERNEL_VER_LIST))
 
