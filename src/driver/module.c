@@ -78,7 +78,6 @@ uint32_t average_spi_load;
 struct task_struct *pilot_receive_thread;
 struct task_struct *pilot_comm_thread;
 
-static int stop_threads = 0;
 
 DEF_WQ_HEAD(data_received_wait_queue);
 DEF_WQ_HEAD(comm_wait_queue);
@@ -298,13 +297,13 @@ static int pilot_comm_task(void *vp)
   while (1)
   {
     //todo - checks are currently duplicated in rpc_spi0_transmit()
-    if (WAIT_EVENT_INTERRUPTIBLE(comm_wait_queue, !queue_is_empty(&_internals.TxQueue) || gpio_get_value(_internals.data_m2r_gpio) || stop_threads == 1))
+    if (WAIT_EVENT_INTERRUPTIBLE(comm_wait_queue, !queue_is_empty(&_internals.TxQueue) || gpio_get_value(_internals.data_m2r_gpio) || kthread_should_stop()))
     {
       LOG_DEBUG("communication thread interrupted");
       return 1; //interrupted
     }
 
-    if (stop_threads == 1)
+    if (kthread_should_stop())
       return 0; 
 
 
@@ -398,13 +397,13 @@ static int pilot_receive_task(void *vp)
 
   while (1)
   {
-    if (WAIT_EVENT_INTERRUPTIBLE_TIMEOUT(data_received_wait_queue, !queue_is_empty(&_internals.RxQueue) || stop_threads == 1,  (200 * HZ / 1000)) == -ERESTARTSYS)
+    if (WAIT_EVENT_INTERRUPTIBLE_TIMEOUT(data_received_wait_queue, !queue_is_empty(&_internals.RxQueue) || kthread_should_stop(),  (200 * HZ / 1000)) == -ERESTARTSYS)
     {
       LOG_DEBUG("receive thread interrupted");
       return 1; //interrupted
     }
 
-    if (stop_threads == 1)
+    if (kthread_should_stop())
       return 0;
 
     while (queue_dequeue(&_internals.RxQueue, &recv) == 1)
@@ -450,19 +449,20 @@ static void __exit rpc_exit(void)
 {
   LOG_DEBUG("rpc_exit() called.");
   
-  if (pilot_receive_thread) 
+  if (pilot_comm_thread) 
   {
-    LOG_DEBUG("Trying to stop threads...");
-    //try to end thread
-    stop_threads = 1;
-    WAIT_WAKEUP(data_received_wait_queue);
-    WAIT_WAKEUP(comm_wait_queue);
-    kthread_stop(pilot_receive_thread);
+    LOG_DEBUG("Trying to stop comm thread...");
     kthread_stop(pilot_comm_thread);
-
-    pilot_receive_thread = NULL;
-    LOG_DEBUG("Threads stopped.");
+    WAIT_WAKEUP(comm_wait_queue);
   }
+  if (pilot_receive_thread)
+  {
+    LOG_DEBUG("Trying to stop receive thread...");
+    kthread_stop(pilot_receive_thread);
+    WAIT_WAKEUP(data_received_wait_queue);
+
+  }
+  LOG_DEBUG("Threads stopped.");
 
   // free /proc/XXX files
   rpc_proc_deinit();
@@ -951,6 +951,9 @@ static void rpc_proc_deinit(void)
   /* remove /proc/pilot/uid */
   remove_proc_entry(pilot_proc_uid_name, _internals.proc_pilot_dir);
 
+  /* remove /proc/pilot/uid */
+  remove_proc_entry(pilot_proc_fwinfo_name, _internals.proc_pilot_dir);
+  
   /* remove the /proc/pilot/moduleX entries */
   for (i = 0; i < MODULES_COUNT; i++)
   {

@@ -31,4 +31,5 @@ autobuild/root/
 /build/rpi/
 /build/images/
 /build/tools/
+/build/pilot-*/
 **/ipch/

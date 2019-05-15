@@ -20,8 +20,9 @@ help:
 
 
 local:
-		@echo "BUILDING SLCD DRIVER"
-		make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules EXTRA_CFLAGS="-g -DDEBUG -DDEBUGALL"
+	@echo "BUILDING SLCD DRIVER"
+	cp $(BASE_DRV_SRC)/Module.symvers $(PWD)
+	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules 
 
 
 

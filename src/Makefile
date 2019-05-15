@@ -47,7 +47,8 @@ coral:
 	@if [ `ls -1 $(OUT_DIR)/bin | wc -l` -ne $(words $(DRIVER_NAMES_LIST)) ]; then \
 	echo "$(bold)not all driver files compiled. please check $(OUT_DIR)/bin/ for missing kernel drivers$(normal)"; \
 	else \
-	coral_files/setup.sh;
+	cd coral_files;\
+	./setup.sh; \
 	fi
 
 # -------------------------------------------------------------------------------------------

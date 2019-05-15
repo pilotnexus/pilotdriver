@@ -20,7 +20,7 @@ help:
 
 local:
 	@echo "BUILDING BASE DRIVER"
-	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules EXTRA_CFLAGS="-g -DDEBUG -DDEBUGALL"
+	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules 
 
 
 
