@@ -28,8 +28,10 @@ autobuild/boot/
 autobuild/firmware/
 autobuild/images/
 autobuild/root/
-/build/rpi/
-/build/images/
-/build/tools/
-/build/pilot-*/
+build/rpi/
+build/images/
+build/tools/
+build/pilot-*/
 **/ipch/
+build/package/debian/boot/
+build/package/debian/DEBIAN/control

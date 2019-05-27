@@ -68,7 +68,7 @@ xc_$(1):
 	mkdir -p $(MODULESDIR)/`echo $(1) | cut -f1 -d'+'`+; \
 	cp $(OUT_DIR)/bin/$(1)/* $(MODULESDIR)/`echo $(1) | cut -f1 -d'+'`+; \
 	mkdir -p $(OVERLAYSDIR); \
-	cp pilot.dtbo $(OVERLAYSDIR); \
+	cp rpi_files/pilot.dtbo $(OVERLAYSDIR); \
 	sed "s/\[PACKAGENAME\]/pilot-$(1)/" $(PACKAGEDIR)/control.template | sed "s/\[VERSION\]/$(VERSION)/" > $(PACKAGEDIR)/debian/DEBIAN/control; \
 	fakeroot dpkg -b $(PACKAGEDIR)/debian $(DEBDIR)/pilot-$(1).deb; \
 	fi
