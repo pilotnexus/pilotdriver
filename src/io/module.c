@@ -162,6 +162,7 @@ static void __exit pilot_io_exit()
 static const char io16[]     = "io16";
 static const char i8[]       = "i8";
 static const char o8[]       = "o8";
+static const char demo[]     = "demo";
 static const char counter8[] = "count8";
 static const char ai8[]      = "ai8";
 static const char aio20[]    = "aio20";
@@ -177,6 +178,8 @@ static pilot_io_module_type_t pilot_io_get_module_type(const pilot_module_type_t
     io_type = pilot_io_module_type_i8;
   else if (strncmp(o8, module_type->name, 2) == 0)
     io_type = pilot_io_module_type_o8;
+  else if (strncmp(demo, module_type->name, 4) == 0)
+    io_type = pilot_io_module_type_demo;
   else if (strncmp(counter8, module_type->name, 6) == 0)
     io_type = pilot_io_module_type_counter8;
   else if (strncmp(ai8, module_type->name, 3) == 0)
@@ -195,6 +198,7 @@ static const char* pilot_io_get_module_string(pilot_io_module_type_t module_type
   {
     case pilot_io_module_type_i8: return i8;
     case pilot_io_module_type_o8: return o8;
+    case pilot_io_module_type_demo: return demo;
     case pilot_io_module_type_io16: return io16;
     case pilot_io_module_type_counter8: return counter8;
     case pilot_io_module_type_aio20: return aio20;
@@ -249,6 +253,7 @@ static void pilot_io_gpio_chip_init(module_slot_t slot,          /* slot number 
   switch (module_type) {
     case pilot_io_module_type_i8:
     case pilot_io_module_type_o8:
+    case pilot_io_module_type_demo:
       gpio_count = 8; break;
     case pilot_io_module_type_io16: gpio_count = 16; break;
     default: gpio_count = 0; break;
@@ -300,7 +305,12 @@ static int pilot_io_register_gpio_module(module_slot_t slot, pilot_io_module_typ
     for (i = 0; i < IO_COUNT; i++)
       gpio_module->gpio_states[i] = 0;
 
-    gpio_module->gpio_direction = (module_type == pilot_io_module_type_o8) ? 0xff : 0;
+    switch (module_type) {
+      case pilot_io_module_type_o8: gpio_module->gpio_direction = 0xff; break;
+      case pilot_io_module_type_demo: gpio_module->gpio_direction = 0x0f; break;
+      default: gpio_module->gpio_direction = 0x0; break;
+    }
+    //gpio_module->gpio_direction = (module_type == pilot_io_module_type_o8) ? 0xff : 0;
   }
   else
   {
@@ -573,12 +583,15 @@ static int  pilot_io_gpio_chip_cb_direction_input  (struct gpio_chip* chip, unsi
       /* send the set direction cmd */
       pilot_io_set_io_direction(gpio_module->slot, block, pilot_io16_direction_input);
       return SUCCESS;
-
+    case pilot_io_module_type_demo:
+      if (offset >= 0 && offset < 4)
+        return SUCCESS;
+      return -EINVAL;
+      break;
     case pilot_io_module_type_o8: /* changing the direction to input is not allowed on the output module */
     default:
       return -EINVAL;
   }
-
 }
 
 static int  pilot_io_gpio_chip_cb_direction_output (struct gpio_chip* chip, unsigned offset, int value)
@@ -609,7 +622,8 @@ static int  pilot_io_gpio_chip_cb_direction_output (struct gpio_chip* chip, unsi
   }
 
   if (gpio_module->module_type == pilot_io_module_type_o8 ||
-      gpio_module->module_type == pilot_io_module_type_io16)
+      gpio_module->module_type == pilot_io_module_type_io16 ||
+      (gpio_module->module_type == pilot_io_module_type_demo && offset >= 4 ))
   {
     /* set the output value */
     pilot_io_set_output_value(gpio_module->slot, (pilot_output_target_t)offset, value);
@@ -701,7 +715,9 @@ static void pilot_io_gpio_chip_cb_set(struct gpio_chip* chip, unsigned offset, i
   gpio_module = container_of(chip, gpio_module_t, gpio_chip);
 
   if (gpio_module->module_type == pilot_io_module_type_o8 ||
-      gpio_module->module_type == pilot_io_module_type_io16)
+      gpio_module->module_type == pilot_io_module_type_io16 ||
+     (gpio_module->module_type == pilot_io_module_type_demo && offset >= 4 ))
+      
   {
     /* save the internal state */
     gpio_module->gpio_states[offset] = value;
@@ -754,6 +770,7 @@ static int pilot_io_callback_assign_slot(module_slot_t slot, const pilot_module_
   {
     case pilot_io_module_type_i8:
     case pilot_io_module_type_o8:
+    case pilot_io_module_type_demo:
     case pilot_io_module_type_io16:
       pilot_io_register_gpio_module(slot, io_type); /* register the gpio module */
       break;
@@ -858,14 +875,9 @@ static pilot_cmd_handler_status_t pilot_io_callback_cmd_received(pilot_cmd_t cmd
       /* handle input message */
       case pilot_cmd_type_input_get_input:
         input_index = cmd.data[(int)pilot_input_index_target];
-        //value = cmd.data[(int)pilot_input_index_value] ? 1 : 0;
-        //value = cmd.data[pilot_cmd_t_data_size-1] ? 1 : 0;
-
         /* update the input value, it is encoded in the last 4 bytes */
-        value = (((u64)cmd.data[(int)pilot_input_index_value + 0]) << (3*8)) |
-                (((u64)cmd.data[(int)pilot_input_index_value + 1]) << (2*8)) |
-                (((u64)cmd.data[(int)pilot_input_index_value + 2]) << (1*8)) |
-                (((u64)cmd.data[(int)pilot_input_index_value + 3]) << (0*8));
+        value = (((u64)cmd.data[(int)pilot_input_index_value + 0]) << (8)) |
+                (((u64)cmd.data[(int)pilot_input_index_value + 1]));
 
         gpio_module->gpio_states[input_index] = value;
         mb();

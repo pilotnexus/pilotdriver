@@ -645,7 +645,7 @@ static ssize_t pilot_plc_proc_var_write(struct file *file, const char __user *bu
 {
     int ret = -EINVAL;
     bool use_set_variable = true;
-    uint16_t flag = 0;
+    //uint16_t flag = 0;
     char value[8];
     int index = 0;
     int waitret;

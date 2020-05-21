@@ -16,6 +16,7 @@ typedef enum {
   pilot_io_module_type_invalid,
   pilot_io_module_type_i8,
   pilot_io_module_type_o8,
+  pilot_io_module_type_demo,
   pilot_io_module_type_io16,
   pilot_io_module_type_ai8,
   pilot_io_module_type_aio20,

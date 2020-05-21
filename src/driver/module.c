@@ -218,7 +218,7 @@ static int32_t pilot_spi_probe(struct spi_device * spi)
     _internals.spi_xfer.tx_buf = &_internals.send;
     _internals.spi_xfer.rx_buf = &_internals.recv,
     _internals.spi_xfer.len = 2;
-    _internals.spi_xfer.speed_hz = 4000000; //todo - get from devicetree
+    _internals.spi_xfer.speed_hz = 10000000; //todo - get from devicetree
 
     if (np)
     {
@@ -282,7 +282,7 @@ static void pilot_internals_init()
   INIT_WQ_HEAD(_internals.uid_is_updated_wq);
   INIT_WQ_HEAD(_internals.fwinfo_is_updated_wq);
   start_spi_us = end_spi_us = ktime_to_us(ktime_get());
-  _internals.spiclk = 4000000;
+  _internals.spiclk = 10000000;
 }
 
 #define TARGET_INVALID_BLOCK_SIZE 12
