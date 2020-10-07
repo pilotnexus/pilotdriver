@@ -76,7 +76,8 @@ static int pilot_rtc_probe(struct platform_device *dev)
   LOG_DEBUG("pilot_rtc_probe() called");
 
   /* create the rtc device */
-  rtc = rtc_device_register("pilotrtc", &dev->dev, &pilot_rtc_ops, THIS_MODULE);
+  //rtc = rtc_device_register("pilotrtc", &dev->dev, &pilot_rtc_ops, THIS_MODULE);
+  rtc = devm_rtc_device_register(&dev->dev, "pilotrtc", &pilot_rtc_ops, THIS_MODULE);
 
   if (IS_ERR(rtc)) {
     ret = PTR_ERR(rtc);
@@ -100,7 +101,7 @@ static int pilot_rtc_remove(struct platform_device *dev)
   rtc = platform_get_drvdata(dev);
 
   /* remove the rtc device */
-  rtc_device_unregister(rtc);
+  //devm_rtc_device_unregister(rtc);
 
   return SUCCESS;
 }
