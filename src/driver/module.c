@@ -285,7 +285,7 @@ static void pilot_internals_init()
   _internals.spiclk = 10000000;
 }
 
-#define TARGET_INVALID_BLOCK_SIZE 12
+#define TARGET_INVALID_BLOCK_SIZE 32
 static int pilot_comm_task(void *vp)
 {
   static spidata_t target_invalid_block[TARGET_INVALID_BLOCK_SIZE] = { [ 0 ... TARGET_INVALID_BLOCK_SIZE-1 ] = target_invalid};
@@ -581,10 +581,13 @@ static void pilot_spi0_handle_received_base_cmd(pilot_cmd_t *cmd)
     break;
   case pilot_cmd_type_fwinfo:
     /* update fw info */
-    for (i = 0; i < pilot_cmd_t_data_size && i < MODULE_FWINFO_LENGTH; i++)
-      _internals.fwinfo[i] = cmd->data[i];
-    _internals.fwinfo_is_updated = 1; /* mark fwinfo as updated */
-    WAIT_WAKEUP(_internals.fwinfo_is_updated_wq);
+    if (cmd->data[0] == 0)
+    {
+      for (i = 0; i < (pilot_cmd_t_data_size-1) && i < MODULE_FWINFO_LENGTH; i++)
+        _internals.fwinfo[i] = cmd->data[i+1];
+      _internals.fwinfo_is_updated = 1; /* mark fwinfo as updated */
+      WAIT_WAKEUP(_internals.fwinfo_is_updated_wq);
+    }
     break;
   case pilot_cmd_type_test_run:
     /* update the test results */
@@ -666,8 +669,16 @@ static void pilot_spi0_handle_received_cmd_byte(target_t target, uint8_t data)
       break;
       case (uint8_t)target_base_reserved: _internals.current_cmd.cmd.reserved = data; _internals.current_cmd.cmd_completion |= 0x8; break;
       default:
-        //general error in transmission structure, reset
-        _internals.current_cmd.cmd_completion = 0x0;
+        if (target == target_invalid && data == 0) 
+        {
+          //dummy byte, ignore
+          return;
+        } 
+        else 
+        {
+          //general error in transmission structure, reset
+          _internals.current_cmd.cmd_completion = 0x0;
+        }
       break;
     }
   }
@@ -1797,9 +1808,10 @@ static int pilot_try_get_fwinfo(int timeout)
 
   /* send the request */
   memset(&cmd, 0, sizeof(pilot_cmd_t));
+  cmd.data[0] = 0;
   cmd.target = target_base;
   cmd.type = pilot_cmd_type_fwinfo;
-  cmd.length = 0; //no payload
+  cmd.length = MSG_LEN(1);
 
   pilot_send_cmd(&cmd);
 
@@ -1818,7 +1830,7 @@ static int pilot_proc_pilot_fwinfo_show(struct seq_file *file, void *data)
   int ret;
   if (pilot_try_get_fwinfo(1000) == SUCCESS)
   {
-    _internals.fwinfo[MODULE_FWINFO_LENGTH] = 0; //safety terminating char
+    _internals.fwinfo[MODULE_FWINFO_LENGTH-1] = 0; //safety terminating char
     seq_printf(file, "%s\n", _internals.fwinfo);
     ret = 0;
   }

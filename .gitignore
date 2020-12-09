@@ -6,6 +6,7 @@
 *.suo
 *.opensdf
 *.sdf
+*.vscode-ctags
 /tty-config/tty-config
 tty-send/tty-send
 driver.VC.opendb

@@ -1,13 +1,13 @@
 #!/bin/sh
 
 # unload the modules
-rmmod pilot_plc
-rmmod pilot_slcd
-rmmod pilot_rtc
-rmmod pilot_tty
-rmmod pilot_io
-rmmod pilot_fpga
-rmmod pilot
+modprobe -rf pilot_plc
+modprobe -rf pilot_slcd
+modprobe -rf pilot_rtc
+modprobe -rf pilot_tty
+modprobe -rf pilot_io
+modprobe -rf pilot_fpga
+modprobe -rf pilot
 
 # update list of modules for modprobe
 depmod
@@ -22,11 +22,11 @@ sed "/pilot_fpga/d" /etc/modules -i
 sed "/pilot/d"     /etc/modules -i
 
 # remove overlay
-dtoverlay -r pilot
+dtoverlay -r pilot || true
 
 # remove config
 sed -i -e '/# --- Pilot Config Start (do not modify) ---/,/# --- Pilot Config End (do not modify) ---/d' /boot/config.txt
 
 # remove plc startup file
-rm /etc/rc3.d/S01pilot-config
-rm /etc/init.d/pilot-config
+rm -f /etc/rc3.d/S01pilot-config
+rm -f /etc/init.d/pilot-config

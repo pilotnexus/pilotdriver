@@ -13,7 +13,7 @@
 #define MODULE_PORT_COUNT 2
 
 /* command message payload calc macro */
-#define MSG_LEN(x) (0x7F & (x >> 2))
+#define MSG_LEN(x) (0x7F & ((x) >> 2))
 
 /* we're using 16 bit SPI communication */
 typedef u16 spidata_t;
@@ -56,15 +56,15 @@ typedef enum
   pilot_cmd_type_plc_state_get,              /* 0x20 rpi <-> pilot request to send the state of the plc */
   pilot_cmd_type_plc_state_set,              /* 0x21 rpi -> pilot command to set the state of the plc */
   pilot_cmd_type_plc_cycletimes_get,         /* 0x22 rpi <-> pilot request to send the plc cycle times */
-  pilot_cmd_type_plc_variables_read_config,  /* 0x23 rpi -> pilot command to notify the pilot that the plc variable read config stream will be sent */
-  pilot_cmd_type_plc_variables_write_config, /* 0x24 rpi -> pilot command to notify the pilot that the plc variable write config stream will sent */
-  pilot_cmd_type_plc_variables_get,          /* 0x25 rpi <-> pilot request to send the configured plc variables */
-  pilot_cmd_type_plc_variables_set,          /* 0x26 rpi -> pilot command to write the configure plc variables */
+  pilot_cmd_type_plc_read_var_config,        /* 0x23 rpi -> pilot request to get plc config item */
+  pilot_cmd_type_plc_write_var_config,       /* 0x24 rpi -> pilot command to write plc config item  */
+  pilot_cmd_type_plc_variable_get,           /* 0x25 rpi <-> pilot request to send plc variables */
+  pilot_cmd_type_plc_variable_set,           /* 0x26 rpi -> pilot command to set plc variables */
   pilot_cmd_type_lora_set_enable,            /* 0x27 rpi -> pilot command to enable / disable the lora module */
   pilot_cmd_type_lora_get_enable,            /* 0x28 rpi <-> pilot request to send the enabled state of the lora module */
   pilot_cmd_type_test_run,                   /* 0x29 rpi <-> pilot request to run internal tests */
-  pilot_cmd_type_plc_variable_get,           /* 0x2A rpi <-> pilot command to get single variable */
-  pilot_cmd_type_plc_variable_set,           /* 0x2B rpi -> pilot command to write single */
+  pilot_cmd_type_reserved1,                  /* 0x2A rpi <-> pilot command to get single variable */
+  pilot_cmd_type_reserved2,                  /* 0x2B rpi -> pilot command to write single */
   pilot_cmd_type_fpga_state,                 /* 0x2C rpi <-> fpga state */
   pilot_cmd_type_fpga_cmd,                   /* 0x2D rpi <-> fpga cmd */
   pilot_cmd_type_comm_stat,                  /* 0x2E rpi <-> stats */
@@ -100,7 +100,7 @@ typedef enum
   target_base_data     = 0x75
 } target_t;
 
-#define pilot_cmd_t_data_size 512
+#define pilot_cmd_t_data_size 256
 #define pilot_cmd_t_size_without_data 8
 
 /* rpi command struct */
