@@ -28,6 +28,9 @@ coral_packagedir:="$(OUT_DIR)/build/$(localname)"
 coral_modulesdir:="$(coral_packagedir)/debian/lib/modules/$(kernel)/"
 coral_overlaysdir:="$(coral_packagedir)/debian/boot"
 
+local:
+	cd driver && make local && cd ..
+	@for x in $(DRIVER_LIST); do cd $$x && make local && cd ..; done
 
 help:
 	@echo "Cross-compile for version ${VERSION}"
