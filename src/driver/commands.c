@@ -45,8 +45,10 @@
 #define pilot_CMD_TYPE_LORA_SET_ENABLE "LoRA set enable"
 #define pilot_CMD_TYPE_LORA_GET_ENABLE "LoRA get enable"
 #define pilot_CMD_TYPE_TEST_RUN "test run"
-#define pilot_CMD_TYPE_RESERVED1 "reserved1"  
-#define pilot_CMD_TYPE_RESERVED2 "reserved2" 
+#define pilot_CMD_TYPE_MODULE_STATUS_GET "module_status_get"
+#define pilot_CMD_TYPE_MODULE_STATUS_SET "module_status_set"
+//#define pilot_CMD_TYPE_RESERVED1 "reserved1"  
+//#define pilot_CMD_TYPE_RESERVED2 "reserved2" 
 #define pilot_CMD_TYPE_FPGA_STATE "fpga state"
 #define pilot_CMD_TYPE_FPGA_CMD "fpga cmd" 
 #define pilot_CMD_TYPE_COMM_STAT "comm stat"
@@ -98,8 +100,8 @@ char* pilot_cmd_type_to_name(pilot_cmd_type_t type)
     case pilot_cmd_type_lora_set_enable: return pilot_CMD_TYPE_LORA_SET_ENABLE;
     case pilot_cmd_type_lora_get_enable: return pilot_CMD_TYPE_LORA_GET_ENABLE;
     case pilot_cmd_type_test_run: return pilot_CMD_TYPE_TEST_RUN;
-    case pilot_cmd_type_reserved1: return pilot_CMD_TYPE_RESERVED1; 
-    case pilot_cmd_type_reserved2:  return pilot_CMD_TYPE_RESERVED2; 
+    case pilot_cmd_type_module_status_get: return pilot_CMD_TYPE_MODULE_STATUS_GET;
+    case pilot_cmd_type_module_status_set: return pilot_CMD_TYPE_MODULE_STATUS_SET;
     case pilot_cmd_type_fpga_state: return pilot_CMD_TYPE_FPGA_STATE;
     case pilot_cmd_type_fpga_cmd: return pilot_CMD_TYPE_FPGA_CMD;
     case pilot_cmd_type_comm_stat: return pilot_CMD_TYPE_COMM_STAT;

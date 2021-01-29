@@ -6,9 +6,10 @@ cd src
 make xc_$KERNEL $2
 
 echo "unloading modules on $1"
-sshpass -praspberry ssh -o StrictHostKeyChecking=no pi@$1 "sudo rmmod pilot_fpga; sudo rmmod pilot_io;sudo rmmod pilot_tty;sudo rmmod pilot_slcd;sudo rmmod pilot_plc;sudo rmmod pilot_rtc;sudo rmmod pilot;mkdir -p ~/pilotmodules"
+sshpass -praspberry ssh -o StrictHostKeyChecking=no pi@$1 "sudo rmmod pilot_fpga; sudo rmmod pilot_io;sudo rmmod pilot_tty;sudo rmmod pilot_slcd;sudo rmmod pilot_plc;sudo rmmod pilot_rtc;sudo rmmod pilot;mkdir -p ~/pilotmodules;rm ~/pilotmodules/*"
 
 echo "copying modules on $1"
+
 sshpass -praspberry scp -o StrictHostKeyChecking=no ./driver/pilot.ko pi@$1:~/pilotmodules/
 sshpass -praspberry scp -o StrictHostKeyChecking=no ./io/pilot_io.ko pi@$1:~/pilotmodules/
 sshpass -praspberry scp -o StrictHostKeyChecking=no ./tty/pilot_tty.ko pi@$1:~/pilotmodules/

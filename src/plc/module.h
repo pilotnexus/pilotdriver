@@ -21,40 +21,41 @@ MODULE_DESCRIPTION("PiloT PLC kernel module");
 
 #define MSG_PLC_VAR_HEADER_LEN 3 //opt + number size
 
-typedef struct {
+typedef struct __attribute__((__packed__)) {
   uint8_t config;
   uint16_t number;
   uint8_t value;
 } msg_plc_var_config_t;
 
-typedef struct {
+typedef struct __attribute__((__packed__)) {
   uint8_t opt;
   uint16_t number;
-  uint8_t *value;
+  uint8_t value[8];
 } msg_plc_var_t;
 
-typedef struct  {
+typedef struct {
   uint16_t number;
   uint8_t subvalue;
+  uint8_t length;
   uint8_t value[8];
 } plc_var_t;
 
-struct pilotevent_data {
+typedef struct __attribute__((__packed__)) {
   uint8_t cmd;
-  uint8_t reserved;
-  uint16_t sub;
+  uint8_t p1;
+  uint16_t p2;
   uint8_t data[8];
-};
+} pilotevent_data;
 
 struct pilotevent_state {
 	wait_queue_head_t wait;
-	DECLARE_KFIFO(events, struct pilotevent_data, 32);
+	DECLARE_KFIFO(events, pilotevent_data, 32);
 	struct mutex read_lock;
 };
 
 struct mutex access_lock;
 
-typedef struct {
+typedef struct __attribute__((__packed__)) {
   uint16_t min;
   uint16_t max;
   uint16_t cur;
