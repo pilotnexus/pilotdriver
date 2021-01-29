@@ -22,15 +22,34 @@ bold=$(shell tput bold)
 normal=$(shell tput sgr0)
 
 kernel=$(shell uname -r)
+fullkernel:=$(shell uname -a | awk '{ printf $$3} $$4 ~ /\#/ { print substr($$4,2) }')
 localname=pilot-$(kernel)
+fullname=pilot-$(fullkernel)
 
 coral_packagedir:="$(OUT_DIR)/build/$(localname)"
 coral_modulesdir:="$(coral_packagedir)/debian/lib/modules/$(kernel)/"
 coral_overlaysdir:="$(coral_packagedir)/debian/boot"
 
 local:
+	echo "Building Pilot Kernel Drivers for $(fullkernel)"
+	- rm -rf $(OUT_DIR)/bin/$(fullkernel)/*
+	- mkdir -p $(OUT_DIR)/bin/$(fullkernel)
 	cd driver && make local && cd ..
-	@for x in $(DRIVER_LIST); do cd $$x && make local && cd ..; done
+	@for x in $(DRIVER_LIST); do cd $$x && make local && cp $(PWD)/$$x/*.ko $(OUT_DIR)/bin/$(fullkernel)/ && cd ..; done
+
+prepare:
+	sudo apt install -y git bc bison flex libssl-dev libncurses5-dev make
+	sudo wget https://raw.githubusercontent.com/RPi-Distro/rpi-source/master/rpi-source -O /usr/local/bin/rpi-source && sudo chmod +x /usr/local/bin/rpi-source && /usr/local/bin/rpi-source -q --tag-update
+
+package:
+	echo "create package"; \
+	rm -rf $(MODULESDIR)/*; \
+	mkdir -p $(MODULESDIR)/`echo $(fullkernel) | cut -f1 -d'+'`+; \
+	cp $(OUT_DIR)/bin/$(fullkernel)/* $(MODULESDIR)/`echo $(fullkernel) | cut -f1 -d'+'`+; \
+	mkdir -p $(OVERLAYSDIR); \
+	cp rpi_files/pilot.dtbo $(OVERLAYSDIR); \
+	sed "s/\[PACKAGENAME\]/pilot-$(fullkernel)/" $(PACKAGEDIR)/control.template | sed "s/\[VERSION\]/$(VERSION)/" > $(PACKAGEDIR)/debian/DEBIAN/control; \
+	fakeroot dpkg -b $(PACKAGEDIR)/debian $(DEBDIR)/pilot-$(fullkernel).deb; \
 
 help:
 	@echo "Cross-compile for version ${VERSION}"
