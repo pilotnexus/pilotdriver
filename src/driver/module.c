@@ -153,7 +153,8 @@ static const struct file_operations proc_pilot_spiclk_fops,
                                     proc_pilot_module_eeprom_user_fops,
                                     proc_pilot_test_fops,
                                     proc_pilot_uid_fops,
-                                    proc_pilot_fwinfo_fops;
+                                    proc_pilot_fwinfo_fops,
+                                    proc_pilot_uart_mode_fops;
 
 /* module entry point function, gets called when loading the module */
 module_init(rpc_init);
@@ -280,6 +281,7 @@ static void pilot_internals_init()
 
   INIT_WQ_HEAD(_internals.test_result_is_updated_wq);
   INIT_WQ_HEAD(_internals.uid_is_updated_wq);
+  INIT_WQ_HEAD(_internals.uart_mode_is_updated_wq);
   INIT_WQ_HEAD(_internals.fwinfo_is_updated_wq);
   start_spi_us = end_spi_us = ktime_to_us(ktime_get());
   _internals.spiclk = 10000000;
@@ -601,6 +603,15 @@ static void pilot_spi0_handle_received_base_cmd(pilot_cmd_t *cmd)
     _internals.test_result_is_updated = 1; /* mark the test results as updated */
     WAIT_WAKEUP(_internals.test_result_is_updated_wq);
     break;
+  case pilot_cmd_type_uart_mode_get:
+    _internals.uartmode = *((int *)cmd->data);
+    _internals.uart_mode_is_updated = 1; 
+    WAIT_WAKEUP(_internals.test_result_is_updated_wq);
+    break;
+  case pilot_cmd_type_uart_mode_set:
+    _internals.uart_mode_is_updated = 1; 
+    WAIT_WAKEUP(_internals.test_result_is_updated_wq);
+    break;
   }
 }
 
@@ -856,6 +867,7 @@ static char* pilot_proc_module_eeprom_user_names[] = { "user00", "user01", "user
 #define pilot_proc_stats_name "stats"/* /proc/pilot/stats */
 #define pilot_proc_last_recv_cmd_name "last_recv_cmd"  /* /proc/pilot/last_recv_cmd */
 #define pilot_proc_test_name "test" /* /proc/pilot/test */
+#define pilot_proc_uart_mode_name "uartmode" /* /proc/pilot/uartmode */
 #define pilot_proc_uid_name "uid" /* filename: /proc/pilot/uid */
 #define pilot_proc_fwinfo_name "fwinfo" /* filename: /proc/pilot/fwinfo */
 #define RPC_PROC_BUFFER_SIZE 255
@@ -891,6 +903,9 @@ static void rpc_proc_init(void)
 
   /* register the /proc/pilot/test file */
   proc_create_data(pilot_proc_test_name, 0 /* r */, base_dir, &proc_pilot_test_fops, NULL);
+
+  /* register the /proc/pilot/uart file */
+  proc_create_data(pilot_proc_uart_mode_name, 0666 /* r+w */, base_dir, &proc_pilot_uart_mode_fops, NULL);
 
   /* register the /proc/pilot/eeprom file */
   proc_create_data(pilot_proc_uid_name, 0 /* r */, base_dir, &proc_pilot_uid_fops, NULL);
@@ -958,6 +973,9 @@ static void rpc_proc_deinit(void)
 
   /* remove /proc/pilot/test */
   remove_proc_entry(pilot_proc_test_name, _internals.proc_pilot_dir);
+
+  /* remove /proc/pilot/uart */
+  remove_proc_entry(pilot_proc_uart_mode_name, _internals.proc_pilot_dir);
 
   /* remove /proc/pilot/uid */
   remove_proc_entry(pilot_proc_uid_name, _internals.proc_pilot_dir);
@@ -1403,6 +1421,121 @@ static void rpc_unassign_slot(module_slot_t slot)
    }
 }
 
+static int pilot_try_get_uart_mode(int timeout, int *uart_mode)
+{
+  pilot_cmd_t cmd;
+  int timedout = 0;
+
+  _internals.uart_mode_is_updated = 0;
+
+  /* setup the cmd */
+  memset(&cmd, 0, sizeof(pilot_cmd_t));
+  cmd.target = target_base;
+  cmd.type = pilot_cmd_type_uart_mode_get;
+  cmd.length = 0; //no payload
+
+  /* send the Cmd */
+  pilot_send_cmd(&cmd);
+
+  /* wait until the uid is updated or the timeout occurs */
+  if (WAIT_EVENT_INTERRUPTIBLE_TIMEOUT(_internals.uart_mode_is_updated_wq, _internals.uart_mode_is_updated != 0, (timeout * HZ / 1000)) <= 0)
+  {
+    timedout = 1;
+    LOG_INFO("pilot_try_get_uart_mode() timeout reached while waiting for fid!");
+  }
+  else
+  {
+    *uart_mode = _internals.uartmode;    
+    LOG_DEBUGALL("pilot_try_get_uart_mode() successful");
+  }
+
+  return timedout ? -1 : SUCCESS;
+}
+
+static int pilot_try_set_uart_mode(int timeout, int uart_mode)
+{
+  pilot_cmd_t cmd;
+  int timedout = 0;
+
+  _internals.uart_mode_is_updated = 0;
+
+  /* setup the cmd */
+  memset(&cmd, 0, sizeof(pilot_cmd_t));
+  cmd.target = target_base;
+  cmd.type = pilot_cmd_type_uart_mode_set;
+  memcpy(cmd.data, (void *)&uart_mode, sizeof(uart_mode));
+  cmd.length = MSG_LEN(4); 
+
+  /* send the Cmd */
+  pilot_send_cmd(&cmd);
+
+  /* wait until the uid is updated or the timeout occurs */
+  if (WAIT_EVENT_INTERRUPTIBLE_TIMEOUT(_internals.uart_mode_is_updated_wq, _internals.uart_mode_is_updated != 0, (timeout * HZ / 1000)) <= 0)
+  {
+    timedout = 1;
+    LOG_INFO("pilot_try_get_uart_mode() timeout reached while waiting for fid!");
+  }
+  else
+  {
+    LOG_DEBUGALL("pilot_try_get_uart_mode() successful");
+  }
+
+  return timedout ? -1 : SUCCESS;
+}
+
+
+
+/************************
+* /proc/pilot/uartmode
+************************/
+
+static int pilot_proc_pilot_uartmode_show(struct seq_file *file, void *data)
+{
+
+  if (pilot_try_get_uart_mode(100, &_internals.uartmode) == SUCCESS)
+  {
+    seq_printf(file, "%i\n", _internals.uartmode);
+    return 0;
+  }
+  else 
+    return -EINVAL;
+}
+
+static ssize_t pilot_proc_pilot_uartmode_write(struct file* file, const char __user *buf, size_t count, loff_t *off)
+{
+  int new_value, ret=-EINVAL;
+
+  /* try to get an int value from the user */
+  if (kstrtoint_from_user(buf, count, 10, &new_value) != SUCCESS)
+    ret = -EINVAL; /* return an error if the conversion fails */
+  else
+  {
+    /* sanity check the value before setting the spiclk */
+    if (pilot_try_set_uart_mode(100, new_value) == SUCCESS)
+    {
+      _internals.uartmode = new_value;
+      ret = count;
+    }
+    else
+      ret = -EINVAL;
+  }
+  return ret;
+}
+
+static int pilot_proc_pilot_uartmode_open(struct inode *inode, struct file *file)
+{
+  return single_open(file, pilot_proc_pilot_uartmode_show, NULL);
+}
+
+/* file operations for /proc/pilot/uartmode */
+static const struct file_operations proc_pilot_uart_mode_fops = {
+  .owner   = THIS_MODULE,
+  .open    = pilot_proc_pilot_uartmode_open,
+  .read    = seq_read,
+  .llseek  = seq_lseek,
+  .release = single_release,
+  .write   = pilot_proc_pilot_uartmode_write
+};
 /************************
 * /proc/pilot/spiclk
 ************************/

@@ -140,6 +140,11 @@ typedef struct
 
   bool pilot_recv_buffer_full;
 
+  /* uart mode */
+  DEF_WQ_HEAD(uart_mode_is_updated_wq);
+  volatile int uart_mode_is_updated;
+  int uartmode; /* operation mode of the uart 0=normal, 1=debug */
+
   /* fw info */
   char fwinfo[MODULE_FWINFO_LENGTH+1];
   volatile int fwinfo_is_updated;                     /* set when the module type is updated */

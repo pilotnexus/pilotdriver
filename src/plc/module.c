@@ -977,7 +977,7 @@ void malloc_var(int number, enum iecvarclass type, enum iectypes iecvar, const c
   _internals.variables[number]->variable[i] = 0;
 
   //now create file
-  /* create the file /proc/pilot/plc/varconfig/variables (r/w) */
+  /* create the file /proc/pilot/plc/varconf (r/w) */
   LOG_DEBUG("creating variable %i file %s", _internals.variables[number]->number, _internals.variables[number]->variablename);
   vardir = proc_mkdir_mode(_internals.variables[number]->variablename, 0, varpath->self);
 
@@ -1446,7 +1446,7 @@ static int pilot_try_get_fwinfo(uint8_t n, int timeout)
   return is_timedout ? -1 : SUCCESS;
 }
 
-static int pilot_proc_pilot_fwinfo_show(struct seq_file *file, void *data)
+static int pilot_proc_plc_fwinfo_show(struct seq_file *file, void *data)
 {
   int ret;
   if (pilot_try_get_fwinfo(1, 500) == SUCCESS)
@@ -1461,14 +1461,14 @@ static int pilot_proc_pilot_fwinfo_show(struct seq_file *file, void *data)
   return ret;
 }
 
-static int pilot_proc_pilot_fwinfo_open(struct inode *inode, struct file *file)
+static int pilot_proc_plc_fwinfo_open(struct inode *inode, struct file *file)
 {
-  return single_open(file, pilot_proc_pilot_fwinfo_show, NULL);
+  return single_open(file, pilot_proc_plc_fwinfo_show, NULL);
 }
 
-static const struct file_operations proc_pilot_fwinfo_fops = {
+static const struct file_operations proc_plc_fwinfo_fops = {
   .owner   = THIS_MODULE,
-  .open    = pilot_proc_pilot_fwinfo_open,
+  .open    = pilot_proc_plc_fwinfo_open,
   .read    = seq_read,
   .llseek  = seq_lseek,
   .release = single_release
@@ -1670,7 +1670,7 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
     {
       strncpy((uint8_t *)_internals.fwinfo, &cmd.data[1], pilot_cmd_t_data_size-1);
       mb();
-      _internals.is_fwinfo_updated = false;
+      _internals.is_fwinfo_updated = true;
 
       ret = pilot_cmd_handler_status_handled;
     }
