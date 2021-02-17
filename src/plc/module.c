@@ -1578,6 +1578,7 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
           //queue event
           pe.cmd = 0x1; //get var event
           pe.sub = v.subvalue;
+          printk( KERN_DEBUG MODULE_NAME ": PLC VAR (%d): %llX", v.number, *((uint64_t *)v.value));
           memcpy(&pe.data, v.value, sizeof(pe.data));
           if (kfifo_put(&_internals.event_state.events, pe) != 0)
           {

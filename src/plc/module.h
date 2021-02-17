@@ -30,7 +30,7 @@ typedef struct {
 typedef struct {
   uint8_t opt;
   uint16_t number;
-  uint8_t *value;
+  uint8_t value[8];
 } msg_plc_var_t;
 
 typedef struct  {
