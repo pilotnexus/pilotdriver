@@ -20,30 +20,31 @@ MODULE_DESCRIPTION("PiloT PLC kernel module");
 #define SET_VAR_LEN(len) (len & 0xF)
 
 #define MSG_PLC_VAR_HEADER_LEN 3 //opt + number size
+#define MSG_PLC_VAR_MAX_LEN 8
 
-typedef struct {
+typedef struct __attribute__((__packed__)) {
   uint8_t config;
   uint16_t number;
   uint8_t value;
 } msg_plc_var_config_t;
 
-typedef struct {
+typedef struct __attribute__((__packed__)) {
   uint8_t opt;
   uint16_t number;
-  uint8_t value[8];
+  uint8_t value[MSG_PLC_VAR_MAX_LEN];
 } msg_plc_var_t;
 
-typedef struct  {
+typedef struct __attribute__((__packed__))  {
   uint16_t number;
   uint8_t subvalue;
-  uint8_t value[8];
+  uint8_t value[MSG_PLC_VAR_MAX_LEN];
 } plc_var_t;
 
-struct pilotevent_data {
+struct __attribute__((__packed__)) pilotevent_data {
   uint8_t cmd;
   uint8_t reserved;
   uint16_t sub;
-  uint8_t data[8];
+  uint8_t data[MSG_PLC_VAR_MAX_LEN];
 };
 
 struct pilotevent_state {

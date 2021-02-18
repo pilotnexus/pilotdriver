@@ -191,13 +191,15 @@ static void pilot_plc_send_set_variable_cmd(uint16_t varnumber, uint8_t subvalue
   pilot_cmd_t cmd;
   msg_plc_var_t *v = (msg_plc_var_t *)cmd.data;
 
-  memset(&cmd, 0, MSG_PLC_VAR_HEADER_LEN+valuelen);
   cmd.target = target_base;
   cmd.type = pilot_cmd_type_plc_variable_set;
 
-  v->opt |= SET_VAR_LEN(valuelen);
+  v->opt = SET_VAR_LEN(valuelen);
   v->opt |= SET_VAR_SUB(subvalue);
   v->number = varnumber;
+
+  memset(v->value, 0, MSG_PLC_VAR_MAX_LEN);
+  memcpy(v->value, value, valuelen);
 
   cmd.length = MSG_LEN(MSG_PLC_VAR_HEADER_LEN+valuelen);
   pilot_send_cmd(&cmd);
@@ -433,7 +435,7 @@ static ssize_t pilot_plc_proc_var_read(struct file *filep, char __user *buf, siz
 {
   unsigned int copied=0;
   int ret = 0;
-  char varbuf[8];
+  char varbuf[MSG_PLC_VAR_MAX_LEN];
 
   pilot_plc_variable_t *variable = (pilot_plc_variable_t *)filep->private_data;
 
@@ -471,7 +473,7 @@ static ssize_t pilot_plc_proc_var_read(struct file *filep, char __user *buf, siz
     if (mutex_lock_interruptible(&access_lock))
       return -ERESTARTSYS;
     //ret = kfifo_to_user(&variable->fifo, buf, count, &copied);
-    ret = kfifo_out(&variable->fifo, varbuf, 8);
+    ret = kfifo_out(&variable->fifo, varbuf, MSG_PLC_VAR_MAX_LEN);
     copied = raw_IEC_to_string(variable->iectype, varbuf, get_IEC_size(variable->iectype), buf, MAX_VAR_DATA_LENGTH);
 
     LOG_DEBUG("raw_IEC_to_string (raw: %x%x%x%x%x%x%x%x '%.*s'), copied bytes: %i", varbuf[0],varbuf[1],varbuf[2],varbuf[3],varbuf[4],varbuf[5],varbuf[6],varbuf[7],copied, buf, copied);
@@ -521,7 +523,7 @@ static int pilot_plc_proc_var_open(struct inode *inode, struct file *file)
 static ssize_t pilot_plc_proc_var_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
   int ret = -EINVAL;
-  char value[8];
+  char value[MSG_PLC_VAR_MAX_LEN];
   int index = 0;
   int waitret;
 
@@ -535,7 +537,7 @@ static ssize_t pilot_plc_proc_var_write(struct file *file, const char __user *bu
     /* try to get an int value from the user */
       //change to copy_from_user(msg,buf,count) for more generic use
 
-    if (string_to_IEC_from_user(variable->iectype, &buf[index], count-index, value, 8) != -EINVAL)
+    if (string_to_IEC_from_user(variable->iectype, &buf[index], count-index, value, MSG_PLC_VAR_MAX_LEN) != -EINVAL)
     {
       /* send a plc state set cmd to the pilot */ 
       //LOG_DEBUG("writing variable %i to plc. new value %i\n", variable->number, new_value);
@@ -1534,9 +1536,9 @@ static void pilot_plc_proc_deinit(void)
 // *******************************************************************
 // START pilot interface function implementation
 
-static uint8_t *get_plc_var(u8 *data, plc_var_t *out) {
+static uint8_t *get_plc_var(uint8_t *data, plc_var_t *out) {
   msg_plc_var_t *v = (msg_plc_var_t *)data;
-  u8 len = v->opt & 0xF;
+  uint8_t len = v->opt & 0xF;
   out->number = v->number;
   out->subvalue = (v->opt >> 4) & 0x3;
 
@@ -1547,7 +1549,7 @@ static uint8_t *get_plc_var(u8 *data, plc_var_t *out) {
   
   memcpy(out->value, v->value, len);
 
-  if (v->opt && 0x7F)
+  if (v->opt & 0x80)
     return data + 3 + len; //move pointer to next element
     
   return NULL; //no further variables
@@ -1558,7 +1560,7 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
 {
   pilot_cmd_handler_status_t ret;
   struct pilotevent_data pe;
-  char dummy[8];
+  char dummy[MSG_PLC_VAR_MAX_LEN];
   plc_var_t v;
   msg_plc_var_config_t *c;
   uint8_t *p;
@@ -1568,6 +1570,7 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
 
   switch (cmd.type)
   {
+    case pilot_cmd_type_plc_variable_set:
     case pilot_cmd_type_plc_variable_get:
       p = cmd.data;
       for (i=0; i<(sizeof(cmd.data)/16) && p != NULL; i++) //dont use while(p) to safeguard against malformed data. Max size of var packet is 11 (we use 16, that makes a maximum of 12 vars in one msg )
@@ -1578,7 +1581,6 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
           //queue event
           pe.cmd = 0x1; //get var event
           pe.sub = v.subvalue;
-          printk( KERN_DEBUG MODULE_NAME ": PLC VAR (%d): %llX", v.number, *((uint64_t *)v.value));
           memcpy(&pe.data, v.value, sizeof(pe.data));
           if (kfifo_put(&_internals.event_state.events, pe) != 0)
           {
@@ -1587,10 +1589,10 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
            //now send to variable specific fifo
           if (!mutex_lock_interruptible(&access_lock)) 
           {
-            while (kfifo_avail(&_internals.variables[v.number]->fifo) < 8)
-              ret = kfifo_out(&_internals.variables[v.number]->fifo, dummy, 8); //get rid of old value when fifo is full
+            while (kfifo_avail(&_internals.variables[v.number]->fifo) < MSG_PLC_VAR_MAX_LEN)
+              ret = kfifo_out(&_internals.variables[v.number]->fifo, dummy, MSG_PLC_VAR_MAX_LEN); //get rid of old value when fifo is full
 
-            kfifo_in(&_internals.variables[v.number]->fifo,v.value, 8);
+            kfifo_in(&_internals.variables[v.number]->fifo,v.value, MSG_PLC_VAR_MAX_LEN);
             mutex_unlock(&access_lock);
             wake_up_poll(&_internals.variables[v.number]->in_queue, POLLIN);
           }
@@ -1599,10 +1601,10 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
       ret = pilot_cmd_handler_status_handled;
     break;
 
-    case pilot_cmd_type_plc_variable_set:
-      // TODO - response when setting var
-      ret = pilot_cmd_handler_status_handled;
-    break;
+    //case pilot_cmd_type_plc_variable_set:
+    //  // TODO - response when setting var
+    //  ret = pilot_cmd_handler_status_handled;
+    //break;
   
   case pilot_cmd_type_plc_read_var_config:
     c = (msg_plc_var_config_t *)&cmd.data;
