@@ -5,7 +5,6 @@
 #include <asm/uaccess.h>      /* needed for copy_from_user() function */
 #include "module.h"           /* include defines that describe the module */
 #include "../driver/export.h" /* needed for rpcp main driver functions */
-#include "common.h"
 #include <linux/string.h>     /* for memset() */
 #include <linux/slab.h>       /* kmalloc() and kfree() */
 #include <linux/gfp.h>        /* flags for kmalloc() */
@@ -31,133 +30,16 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd);
 
 // *******************************************************************
 // START local members
+DECLARE_WAIT_QUEUE_HEAD(msg_recv_wait); 
 
-struct mutex access_lock;
 
-typedef struct {
-  u16 min;
-  u16 max;
-  u16 cur;
-  u16 tick;
-  u16 comm;
-  u16 read;
-  u16 program;
-  u16 write;
-} pilot_plc_cycletimes_t;
-
-/* the maximum number of variables that can be configured */
-#define MAX_VAR_COUNT 256
-/* struct that stores the variable configuration */
-typedef struct {
-  u16 variables[MAX_VAR_COUNT]; /* the variable numbers */
-  int count;                    /* the current count of the variables */
-} pilot_plc_variables_config_t;
-
-/* the maximum size of the variable values that can be received */
-#define MAX_VAR_VALUE_SIZE 1024
-typedef struct {
-  char data[MAX_VAR_VALUE_SIZE]; /* the received variable values */
-  int index;                     /* the current data index */
-  int expected;                  /* the expected size of the variable values */
-} pilot_plc_variables_values_t;
-
-typedef struct {
-  char data[MAX_VAR_VALUE_SIZE]; /* the written variable values */
-  int index;                     /* the current data index */
-} pilot_plc_variables_write_values_t;
-
-#define FIFO_SIZE 16
-
-#define MAX_CSV_COLS 6
-#define MAX_VAR_COLS 6
-#define MAX_VAR_DATA_LENGTH 256
-
-#define MAX_VAR_DIR_DEPTH 64
-
-enum iectypes {
-  IEC_NONE = -1,
-  IEC_BOOL, //char
-  IEC_SINT, //int8_t
-  IEC_INT,
-  IEC_DINT,
-  IEC_LINT,
-  IEC_USINT,
-  IEC_UINT,
-  IEC_UDINT,
-  IEC_ULINT,
-  IEC_BYTE,
-  IEC_WORD,
-  IEC_DWORD,
-  IEC_LWORD,
-  IEC_REAL,
-  IEC_LREAL
-};
-
-enum iecvarclass {
-  NONE = -1,
-  IN,
-  OUT,
-  MEM,
-  VAR,
-  EXT
-};
-
-typedef struct pilot_plc_vardir {
-  struct proc_dir_entry *self;
-  struct pilot_plc_vardir *parent;
-  struct pilot_plc_vardir **children;
-  char* name;
-  int childCount;
-} pilot_plc_vardir_t;
-
-typedef struct {
-  int number;
-  enum iecvarclass varclass;
-  enum iectypes iectype;
-  wait_queue_head_t in_queue;
-  wait_queue_head_t out_queue;
-  uint16_t get_flags; /* current variable get flags used for subscriptions */
-  uint16_t set_flags; /* current variable set flags used for forcing */
-  bool is_open;
-  char value[MAX_VAR_DATA_LENGTH];
-  char *variable;     /* full path as string */
-  char *variablename; /* points to the name part of the variable */
-  pilot_plc_vardir_t *dir;
-  bool is_variable_updated;
-  bool is_poll;
-  struct kfifo_rec_ptr_1 fifo;
-} pilot_plc_variable_t;
-
-typedef struct {
-  pilot_plc_variables_config_t read_config;
-  pilot_plc_variables_config_t write_config;
-  pilot_plc_variables_values_t read_values;
-  pilot_plc_variables_write_values_t write_value;
-  volatile int is_values_updated;
-} pilot_plc_variables_t;
-
-/* struct that groups internal members */
-typedef struct {
-  volatile int is_cmd_handler_registered; /* set to 1 if the cmd handler is registered with the rpcp */
-  volatile int is_read_stream_handler_registered; /* set to 1 if the read stream handler is registered with the rpcp */
-  volatile int is_state_updated;
-  volatile pilot_plc_state_t state;
-  volatile int is_cycletimes_updated;
-  volatile pilot_plc_cycletimes_t cycletimes;
-  struct proc_dir_entry *proc_pilot_dir;
-  struct proc_dir_entry *proc_pilot_plc_dir;
-  struct proc_dir_entry *proc_pilot_plc_varconfig_dir;
-  pilot_plc_vardir_t proc_pilot_plc_vars_dir_root;
-  pilot_plc_variables_t variablestream;
-  pilot_plc_variable_t **variables;
-  int variables_count;
-} internals_t;
 
 /* internal variables */
 static internals_t _internals = {
-  .is_cmd_handler_registered = 0,
-  .is_state_updated = 0,
-  .is_cycletimes_updated = 0,
+  .is_cmd_handler_registered = false,
+  .is_state_updated = false,
+  .is_info_updated = false,
+  .is_cycletimes_updated = false,
   .variables = NULL,
   .variables_count = 0
 };
@@ -173,14 +55,18 @@ static pilot_cmd_handler_t pilot_cmd_handler = {
 static const char proc_plc_name[] = "plc";                       /* name of the plc directory in /proc/pilot/plc */
 static const char proc_plc_state_name[] = "state";               /* name of the state file in /proc/pilot/plc/state */
 static const char proc_plc_cycletimes_name[] = "cycletimes";     /* name of the cycletimes file in /proc/pilot/plc/cycletimes */
-static const char proc_plc_varconfig_name[] = "varconf";         /* name of the variable config directory in /proc/pilot/plc/varconf */
-static const char proc_plc_vars_name[] = "vars";                 /* name of the vars directory in /proc/pilot/plc/vars */
-static const char proc_plc_vars_readconfig_name[] = "readcfg";   /* name of the read config file in /proc/pilot/plc/varconf/readcfg */
-static const char proc_plc_vars_writeconfig_name[] = "writecfg"; /* name of the write config file in /proc/pilot/plc/varconf/writecfg */
+static const char proc_plc_vars_name[] = "variables";            /* name of the vars directory in /proc/pilot/plc/vars */
+static const char proc_plc_vars_stream_name[] = "stream";        /* name of the read config file in /proc/pilot/plc/read*/
 static const char proc_plc_vars_value_name[] = "value";          /* name of the value file in /proc/pilot/plc/varconf/value */
-static const char proc_plc_variables_name[] = "variables";       /* name of the variables.csv file in /proc/pilot/plc/varconf/value */
+static const char proc_plc_varconfig_name[] = "varconfig";       /* name of the variables.csv file in /proc/pilot/plc/varconfig */
+static const char proc_plc_fwinfo_name[] = "fwinfo";                  /* name of the info file in /proc/pilot/plc/info */
 
 
+static const char proc_plc_var_value[] = "value";
+static const char proc_plc_var_type[] = "type";
+static const char proc_plc_var_subscribed[] = "subscribe";
+static const char proc_plc_var_forced[] = "force";
+static const char proc_plc_var_force_value[] = "force_value";
 
 // *******************************************************************
 // START VARIABLE.csv funtions
@@ -265,21 +151,6 @@ static int raw_IEC_to_string(enum iectypes type, char *buffer_in, int buffer_in_
   return 0;
 }
 
-/*
-
-int __must_check kstrtoull_from_user(const char __user *s, size_t count, unsigned int base, unsigned long long *res);
-int __must_check kstrtoll_from_user(const char __user *s, size_t count, unsigned int base, long long *res);
-int __must_check kstrtoul_from_user(const char __user *s, size_t count, unsigned int base, unsigned long *res);
-int __must_check kstrtol_from_user(const char __user *s, size_t count, unsigned int base, long *res);
-int __must_check kstrtouint_from_user(const char __user *s, size_t count, unsigned int base, unsigned int *res);
-int __must_check kstrtoint_from_user(const char __user *s, size_t count, unsigned int base, int *res);
-int __must_check kstrtou16_from_user(const char __user *s, size_t count, unsigned int base, u16 *res);
-int __must_check kstrtos16_from_user(const char __user *s, size_t count, unsigned int base, s16 *res);
-int __must_check kstrtou8_from_user(const char __user *s, size_t count, unsigned int base, u8 *res);
-int __must_check kstrtos8_from_user(const char __user *s, size_t count, unsigned int base, s8 *res);
-int __must_check kstrtobool_from_user(const char __user *s, size_t count, bool *res);
-*/
-
 static int string_to_IEC_from_user(enum iectypes type, const char *buffer_in, int buffer_in_length, char *buffer_out, int buffer_out_length)
 {
   unsigned int base = 10;
@@ -315,31 +186,39 @@ static int string_to_IEC_from_user(enum iectypes type, const char *buffer_in, in
 }
 
 
-static void pilot_plc_send_set_variable_cmd(uint16_t varnumber, char *value)
+static void pilot_plc_send_set_variable_cmd(uint16_t varnumber, uint8_t subvalue, char *value, uint8_t valuelen)
 {
   pilot_cmd_t cmd;
-  memset(&cmd, 0, sizeof(pilot_cmd_t));
+  msg_plc_var_t *v = (msg_plc_var_t *)cmd.data;
+
   cmd.target = target_base;
   cmd.type = pilot_cmd_type_plc_variable_set;
 
-  memcpy(cmd.data, value, 8);
-  cmd.data[8] = varnumber & 0xFF;
-  cmd.data[9] = varnumber >> 8; 
-  cmd.length = MSG_LEN(12);
+  v->opt = SET_VAR_LEN(valuelen);
+  v->opt |= SET_VAR_SUB(subvalue);
+  v->number = varnumber;
+
+  memset(v->value, 0, MSG_PLC_VAR_MAX_LEN);
+  memcpy(v->value, value, valuelen);
+
+  cmd.length = MSG_LEN(MSG_PLC_VAR_HEADER_LEN+valuelen);
   pilot_send_cmd(&cmd);
 }
 
-static void pilot_plc_send_get_variable_cmd(uint16_t varnumber)
+static void pilot_plc_send_get_variable_cmd(pilot_plc_variable_t *variable, uint8_t subvalue)
 {
   pilot_cmd_t cmd;
-  memset(&cmd, 0, sizeof(pilot_cmd_t));
+  msg_plc_var_t *v = (msg_plc_var_t *)cmd.data;
+
+  memset(&cmd, 0, sizeof(msg_plc_var_t));
   cmd.target = target_base;
   cmd.type = pilot_cmd_type_plc_variable_get;
 
-  cmd.data[8] = varnumber & 0xFF; 
-  cmd.data[9] = varnumber >> 8; 
-  cmd.length = MSG_LEN(12);
+  v->opt |= SET_VAR_LEN(get_IEC_size(variable->iectype));
+  v->opt |= SET_VAR_SUB(subvalue);
+  v->number = variable->number;
 
+  cmd.length = MSG_LEN(MSG_PLC_VAR_HEADER_LEN);
   pilot_send_cmd(&cmd);
 }
 
@@ -552,26 +431,26 @@ void debug_print_var_line(int number, enum iecvarclass type, enum iectypes iecva
   LOG_DEBUGALL("variable nr: %i:  '%.*s'\n", number, varLength, variable);
 }
 
-static ssize_t pilot_plc_proc_var_read(struct file *filp, char __user *buf, size_t count, loff_t *ppos)
+static ssize_t pilot_plc_proc_var_read(struct file *filep, char __user *buf, size_t count, loff_t *ppos)
 {
   unsigned int copied=0;
   int ret = 0;
-  char varbuf[8];
+  char varbuf[MSG_PLC_VAR_MAX_LEN];
 
-  pilot_plc_variable_t *variable = (pilot_plc_variable_t *)filp->private_data;
+  pilot_plc_variable_t *variable = (pilot_plc_variable_t *)filep->private_data;
 
 
   LOG_DEBUG("pilot_plc_proc_var_read() called\n");
   if (variable && (!variable->is_variable_updated || variable->is_poll))
   {
     if (!variable->is_poll)
-      pilot_plc_send_get_variable_cmd(((uint16_t)variable->number) & 0xFFF);
+      pilot_plc_send_get_variable_cmd(variable, 0);
 
     do 
     {
       if (kfifo_is_empty(&variable->fifo)) 
       {
-        if (filp->f_flags & O_NONBLOCK)
+        if (filep->f_flags & O_NONBLOCK)
                 return -EAGAIN;
 
         if (variable->is_poll)
@@ -594,7 +473,7 @@ static ssize_t pilot_plc_proc_var_read(struct file *filp, char __user *buf, size
     if (mutex_lock_interruptible(&access_lock))
       return -ERESTARTSYS;
     //ret = kfifo_to_user(&variable->fifo, buf, count, &copied);
-    ret = kfifo_out(&variable->fifo, varbuf, 8);
+    ret = kfifo_out(&variable->fifo, varbuf, MSG_PLC_VAR_MAX_LEN);
     copied = raw_IEC_to_string(variable->iectype, varbuf, get_IEC_size(variable->iectype), buf, MAX_VAR_DATA_LENGTH);
 
     LOG_DEBUG("raw_IEC_to_string (raw: %x%x%x%x%x%x%x%x '%.*s'), copied bytes: %i", varbuf[0],varbuf[1],varbuf[2],varbuf[3],varbuf[4],varbuf[5],varbuf[6],varbuf[7],copied, buf, copied);
@@ -608,7 +487,7 @@ static ssize_t pilot_plc_proc_var_read(struct file *filp, char __user *buf, size
      * the file descriptor is non-blocking, otherwise we go back to
      * sleep and wait for more data to arrive.
      */
-    if (copied == 0 && (filp->f_flags & O_NONBLOCK))
+    if (copied == 0 && (filep->f_flags & O_NONBLOCK))
             return -EAGAIN;
 
     } while (copied == 0);
@@ -643,31 +522,27 @@ static int pilot_plc_proc_var_open(struct inode *inode, struct file *file)
 
 static ssize_t pilot_plc_proc_var_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
-    int ret = -EINVAL;
-    bool use_set_variable = true;
-    //uint16_t flag = 0;
-    char value[8];
-    int index = 0;
-    int waitret;
+  int ret = -EINVAL;
+  char value[MSG_PLC_VAR_MAX_LEN];
+  int index = 0;
+  int waitret;
 
-    pilot_plc_variable_t *variable = (pilot_plc_variable_t *)PDE_DATA(file->f_inode);
+  pilot_plc_variable_t *variable = (pilot_plc_variable_t *)PDE_DATA(file->f_inode);
 
   if (!variable)
     return -EINVAL;
 
   LOG_DEBUG("pilot_plc_proc_var_write() called with count=%i", count);
 
-  if (use_set_variable)
-  {
     /* try to get an int value from the user */
       //change to copy_from_user(msg,buf,count) for more generic use
 
-    if (string_to_IEC_from_user(variable->iectype, &buf[index], count-index, value, 8) != -EINVAL)
+    if (string_to_IEC_from_user(variable->iectype, &buf[index], count-index, value, MSG_PLC_VAR_MAX_LEN) != -EINVAL)
     {
       /* send a plc state set cmd to the pilot */ 
       //LOG_DEBUG("writing variable %i to plc. new value %i\n", variable->number, new_value);
     
-      pilot_plc_send_set_variable_cmd(((uint16_t)variable->number) | variable->set_flags, value);
+      pilot_plc_send_set_variable_cmd(variable->number, 0, value, get_IEC_size(variable->iectype));
       LOG_DEBUG("wait_event_interruptible_timeout() after set_variable");
       waitret = wait_event_interruptible_timeout(variable->in_queue, !kfifo_is_empty(&variable->fifo), (200 * HZ / 1000));
       LOG_DEBUG("wait_event_interruptible_timeout() after set_variable returned with returnvalue %i\n", waitret);      
@@ -681,20 +556,6 @@ static ssize_t pilot_plc_proc_var_write(struct file *file, const char __user *bu
     {
       LOG_DEBUG("error parsing input\n");      
     }
-  }
-  else
-  { //subscribe flags detected, use get_variable to set subscription
-    // pilot_plc_send_get_variable_cmd(((uint16_t)variable->number) | flag);
-
-    // LOG_DEBUG("wait_event_interruptible_timeout() after get_variable (subscribe from write)");
-    // waitret = wait_event_interruptible_timeout(variable->in_queue, !kfifo_is_empty(&variable->fifo), (200 * HZ / 1000));
-    // LOG_DEBUG("wait_event_interruptible_timeout() returned with returnvalue %i\n", waitret);
-
-    // if (waitret == 0 || waitret == -ERESTARTSYS)
-    //   ret = -EINVAL;
-    // else
-    //   ret = count;
-  }
   return ret;
 }
 
@@ -708,8 +569,8 @@ static unsigned int pilot_plc_proc_var_poll(struct file *filp, poll_table *wait)
 
   if (!kfifo_is_empty(&variable->fifo))
   {
-    LOG_DEBUG("pilot_plc_proc_var_poll() called, return POLLIN | POLLRDNORM (items in queue)\n");
-    events = POLLIN | POLLRDNORM; 
+    LOG_DEBUG("pilot_plc_proc_var_poll() called, return POLLIN | EPOLLPRI | POLLRDNORM (items in queue)\n");
+    events = POLLIN | EPOLLPRI | POLLRDNORM; 
   }
   else
     LOG_DEBUG("pilot_plc_proc_var_poll() called, return 0 (queue empty)\n");
@@ -742,23 +603,26 @@ loff_t pilot_plc_proc_var_llseek(struct file *filp, loff_t off, int whence)
   //LOG_DEBUG("llseek(), whence=%i, loff=%i %s\n", whence, (int)off, variable->variable);
 
   switch(whence) {
-    case 0: /* SEEK_SET */
-      //if (off == 0)
-      //{
-        newpos = 0;//off;
-        //LOG_DEBUG("llseek to 0 in variable file (current pos=%i) %s\n", (int)filp->f_pos, variable->variable);
-      //}
-      //else
-       // return -ESPIPE;
-      break;
-    default: /* can't happen */
-        return -ESPIPE;
+   case 0: /* SEEK_SET */
+    newpos = off;
+    break;
+
+   case 1: /* SEEK_CUR */
+    newpos = filp->f_pos + off;
+    break;
+
+   case 2: /* SEEK_END */
+    //newpos = dev->size + off;
+    //currently we cannot seek to the end
+    return -ESPIPE; /* unseekable */
+    break;
+
+   default: /* can't happen */
+    return -EINVAL;
   }
-
-    filp->f_pos = newpos;
-    return newpos;
-
-  return -ESPIPE; /* unseekable */
+  if (newpos<0) return -EINVAL;
+  filp->f_pos = newpos;
+  return newpos;
 }
 
 static int pilot_plc_proc_var_type_show(struct seq_file *file, void *data)
@@ -775,54 +639,107 @@ static int pilot_plc_proc_var_type_open(struct inode *inode, struct file *file)
   return single_open(file, pilot_plc_proc_var_type_show, PDE_DATA(inode));
 }
 
-static int pilot_plc_proc_var_sub_show(struct seq_file *file, void *data)
+static int pilot_plc_try_get_variable_config(pilot_plc_variable_t * variable, uint8_t config, int timeout)
+{
+  pilot_cmd_t cmd;
+  int is_timedout = 0;
+  unsigned long timestamp;
+  msg_plc_var_config_t *data = (msg_plc_var_config_t *)cmd.data;
+
+  /* reset the is state updated flag */
+  switch(config) {
+    case 1: variable->is_subscribed_updated = false; break;
+    case 2: variable->is_forced_updated = false; break;
+    default: return -1; break;
+  }
+
+  /* set the plc state get request */
+  cmd.target = target_base;
+  cmd.type = pilot_cmd_type_plc_read_var_config;
+  data->number = variable->number;
+  data->config = config;
+
+  cmd.length = MSG_LEN(3);
+  pilot_send_cmd(&cmd);
+  /* pick a time that is timeout ms in the future */
+  timestamp = jiffies + (timeout * HZ / 1000);
+
+  /* wait until the state is updated or the timeout occurs */
+  while (_internals.is_state_updated == false) 
+    if (time_after(jiffies, timestamp))
+    {
+      is_timedout = 1;
+      break;
+    }
+
+  return is_timedout ? -1 : SUCCESS;
+}
+
+static int pilot_plc_try_set_variable_config(pilot_plc_variable_t * variable, uint8_t config, uint8_t value, int timeout)
+{
+  pilot_cmd_t cmd;
+  int is_timedout = 0;
+  unsigned long timestamp;
+  msg_plc_var_config_t *data = (msg_plc_var_config_t *)cmd.data;
+
+  bool *is_updated;
+
+  /* reset the is state updated flag */
+  switch(config) {
+    case 1: is_updated = &variable->is_subscribed_updated; break;
+    case 2: is_updated = &variable->is_forced_updated; break;
+    default: return -1; break;
+  }
+
+  *is_updated = false;
+
+  /* set the plc state get request */
+  cmd.target = target_base;
+  cmd.type = pilot_cmd_type_plc_write_var_config;
+  data->number = variable->number;
+  data->config = config;
+  data->value = value;
+
+  cmd.length = MSG_LEN(4);
+  pilot_send_cmd(&cmd);
+  /* pick a time that is timeout ms in the future */
+  timestamp = jiffies + (timeout * HZ / 1000);
+
+  /* wait until the state is updated or the timeout occurs */
+  while (*is_updated == 0) 
+
+    if (time_after(jiffies, timestamp))
+    {
+      is_timedout = 1;
+      break;
+    }
+
+  return is_timedout ? -1 : SUCCESS;
+}
+
+static int pilot_plc_proc_var_subscribed_show(struct seq_file *file, void *data)
 {
   pilot_plc_variable_t *variable = (pilot_plc_variable_t *)file->private;
 
-  seq_printf(file, "%i\n", variable->get_flags & PLC_VAR_SUBSCRIBE_BIT ? 1 : 0);
-  LOG_DEBUG("flags is %x", variable->get_flags);
-
-  /*
-  if (count > 0)
-      switch (buf[0])
-      {
-        case 'F': flag = PLC_VAR_FORCE_BIT; index++; break;
-        case 'R': flag = PLC_VAR_UNFORCE_BIT; index++; break;
-        case 'S': flag = PLC_VAR_SUBSCRIBE_BIT; use_set_variable = false; index++; break;
-        case 'U': flag = PLC_VAR_UNSUBSCRIBE_BIT; use_set_variable = false; index++; break;
-      }
-  */
+  pilot_plc_try_get_variable_config(variable, 0x1, 200);
+  seq_printf(file, "%i\n", variable->subscribed ? 1 : 0);
  
   return 0;
 }
 
-static ssize_t pilot_plc_proc_var_sub_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
+static ssize_t pilot_plc_proc_var_subscribed_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
-  int new_value, ret, waitret;
+  int ret, waitret;
+  bool new_value;
   pilot_plc_variable_t *variable = (pilot_plc_variable_t *)PDE_DATA(file->f_inode);
 
   /* try to get an int value from the user */
-  if (kstrtoint_from_user(buf, count, 10, &new_value) != SUCCESS)
+  if (kstrtobool_from_user(buf, count, &new_value) != SUCCESS)
     ret = -EINVAL; /* return an error if the conversion fails */
   else
   {
     /* send a plc state set cmd to the pilot */
-    if (new_value == 0){
-      variable->get_flags &= ~(PLC_VAR_SUBSCRIBE_BIT);
-      variable->get_flags |= PLC_VAR_UNSUBSCRIBE_BIT;
-    }
-    else if (new_value == 1) {
-      variable->get_flags &= ~(PLC_VAR_UNSUBSCRIBE_BIT);
-      variable->get_flags |= PLC_VAR_SUBSCRIBE_BIT;
-    }
-
-    LOG_DEBUG("value: %i, flags is %x", new_value, variable->get_flags);
-
-    pilot_plc_send_get_variable_cmd(((uint16_t)variable->number) | variable->get_flags);
-
-    LOG_DEBUG("wait_event_interruptible_timeout() after get_variable (subscribe from write)");
-    waitret = wait_event_interruptible_timeout(variable->in_queue, !kfifo_is_empty(&variable->fifo), (200 * HZ / 1000));
-    LOG_DEBUG("wait_event_interruptible_timeout() returned with returnvalue %i\n", waitret);
+    waitret = pilot_plc_try_set_variable_config(variable, 0x1, new_value ? 1 : 0, 200);
 
     if (waitret == 0 || waitret == -ERESTARTSYS)
       ret = -EINVAL;
@@ -832,24 +749,61 @@ static ssize_t pilot_plc_proc_var_sub_write(struct file *file, const char __user
   return ret;
 }
 
-static int pilot_plc_proc_var_sub_open(struct inode *inode, struct file *file)
+static int pilot_plc_proc_var_subscribed_open(struct inode *inode, struct file *file)
 {
-  return single_open(file, pilot_plc_proc_var_sub_show, PDE_DATA(inode));
+  return single_open(file, pilot_plc_proc_var_subscribed_show, PDE_DATA(inode));
 }
 
-static int pilot_plc_proc_var_force_show(struct seq_file *file, void *data)
+static int pilot_plc_proc_var_forced_show(struct seq_file *file, void *data)
 {
   pilot_plc_variable_t *variable = (pilot_plc_variable_t *)file->private;
-  seq_printf(file, "%i\n", variable->set_flags & PLC_VAR_FORCE_BIT ? 1 : 0);
-  LOG_DEBUG("flags is %x (%i)", variable->set_flags, variable->set_flags);
+
+  pilot_plc_try_get_variable_config(variable, 0x2, 200);
+  seq_printf(file, "%i\n", variable->forced ? 1 : 0);
 
   return 0;
 }
 
-static ssize_t pilot_plc_proc_var_force_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
+static ssize_t pilot_plc_proc_var_forced_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
+{
+  int ret, waitret;
+  bool new_value;
+  pilot_plc_variable_t *variable = (pilot_plc_variable_t *)PDE_DATA(file->f_inode);
+
+  /* try to get an int value from the user */
+  if (kstrtobool_from_user(buf, count, &new_value) != SUCCESS)
+    ret = -EINVAL; /* return an error if the conversion fails */
+  else
+  {
+    /* send a plc state set cmd to the pilot */
+    waitret = pilot_plc_try_set_variable_config(variable, 0x2, new_value ? 1 : 0, 200);
+
+    if (waitret == 0 || waitret == -ERESTARTSYS)
+      ret = -EINVAL;
+    else
+      ret = count; /* we processed the complete input */
+  }
+  return ret;
+}
+
+static int pilot_plc_proc_var_forced_open(struct inode *inode, struct file *file)
+{
+  return single_open(file, pilot_plc_proc_var_forced_show, PDE_DATA(inode));
+}
+
+
+// var_force_value
+
+static int pilot_plc_proc_var_force_value_show(struct seq_file *file, void *data)
+{
+
+  return 0;
+}
+
+static ssize_t pilot_plc_proc_var_force_value_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
   int new_value, ret;
-  pilot_plc_variable_t *variable = (pilot_plc_variable_t *)PDE_DATA(file->f_inode);
+  //pilot_plc_variable_t *variable = (pilot_plc_variable_t *)PDE_DATA(file->f_inode);
 
   /* try to get an int value from the user */
   if (kstrtoint_from_user(buf, count, 10, &new_value) != SUCCESS)
@@ -858,23 +812,18 @@ static ssize_t pilot_plc_proc_var_force_write(struct file *file, const char __us
   {
     /* send a plc state set cmd to the pilot */
     if (new_value == 0){
-      variable->set_flags &= ~(PLC_VAR_FORCE_BIT);
-      variable->set_flags |= PLC_VAR_UNFORCE_BIT;
     }
     else if (new_value == 1) {
-      variable->set_flags &= ~(PLC_VAR_UNFORCE_BIT);
-      variable->set_flags |= PLC_VAR_FORCE_BIT;
     }
-    LOG_DEBUG("value: %i, flags is %x", new_value, variable->set_flags);
 
     ret = count; /* we processed the complete input */
   }
   return ret;
 }
 
-static int pilot_plc_proc_var_force_open(struct inode *inode, struct file *file)
+static int pilot_plc_proc_var_force_value_open(struct inode *inode, struct file *file)
 {
-  return single_open(file, pilot_plc_proc_var_force_show, PDE_DATA(inode));
+  return single_open(file, pilot_plc_proc_var_force_value_show, PDE_DATA(inode));
 }
 
 /* file operations for the /proc/pilot/plc/vars/..../value */
@@ -895,20 +844,29 @@ static const struct file_operations proc_plc_variable_type_fops = {
   .release = single_release
 };
 
-static const struct file_operations proc_plc_variable_subscribe_fops = {
+static const struct file_operations proc_plc_variable_subscribed_fops = {
   .owner = THIS_MODULE,
-  .open = pilot_plc_proc_var_sub_open,
+  .open = pilot_plc_proc_var_subscribed_open,
   .read = seq_read,
-  .write = pilot_plc_proc_var_sub_write,
+  .write = pilot_plc_proc_var_subscribed_write,
   .llseek = seq_lseek,
   .release = single_release
 };
 
-static const struct file_operations proc_plc_variable_force_fops = {
+static const struct file_operations proc_plc_variable_forced_fops = {
   .owner = THIS_MODULE,
-  .open = pilot_plc_proc_var_force_open,
+  .open = pilot_plc_proc_var_forced_open,
   .read = seq_read,
-  .write = pilot_plc_proc_var_force_write,
+  .write = pilot_plc_proc_var_forced_write,
+  .llseek = seq_lseek,
+  .release = single_release
+};
+
+static const struct file_operations proc_plc_variable_force_value_fops = {
+  .owner = THIS_MODULE,
+  .open = pilot_plc_proc_var_force_value_open,
+  .read = seq_read,
+  .write = pilot_plc_proc_var_force_value_write,
   .llseek = seq_lseek,
   .release = single_release
 };
@@ -994,8 +952,6 @@ void malloc_var(int number, enum iecvarclass type, enum iectypes iecvar, const c
   _internals.variables[number]->number = number;
   _internals.variables[number]->varclass = type;
   _internals.variables[number]->iectype = iecvar;
-  _internals.variables[number]->set_flags = 0;
-  _internals.variables[number]->get_flags = 0;
   init_waitqueue_head(&_internals.variables[number]->in_queue);
   _internals.variables[number]->variable = (char*)kzalloc(varLength+1 * sizeof(char), __GFP_NOFAIL | __GFP_IO | __GFP_FS);
   _internals.variables[number]->variablename = _internals.variables[number]->variable;
@@ -1031,15 +987,17 @@ void malloc_var(int number, enum iecvarclass type, enum iectypes iecvar, const c
   _internals.variables[number]->variable[i] = 0;
 
   //now create file
-  /* create the file /proc/pilot/plc/varconfig/variables (r/w) */
+  /* create the file /proc/pilot/plc/varconf (r/w) */
   LOG_DEBUG("creating variable %i file %s", _internals.variables[number]->number, _internals.variables[number]->variablename);
   vardir = proc_mkdir_mode(_internals.variables[number]->variablename, 0, varpath->self);
 
   //create actual files
-  proc_create_data("value", 0666, vardir, &proc_plc_variable_fops, _internals.variables[number]);
-  proc_create_data("type", 0666, vardir, &proc_plc_variable_type_fops, _internals.variables[number]);
-  proc_create_data("subscribe", 0666, vardir, &proc_plc_variable_subscribe_fops, _internals.variables[number]);
-  proc_create_data("force", 0666, vardir, &proc_plc_variable_force_fops, _internals.variables[number]);
+  proc_create_data(proc_plc_var_value, 0666, vardir, &proc_plc_variable_fops, _internals.variables[number]);
+  proc_create_data(proc_plc_var_type, 0666, vardir, &proc_plc_variable_type_fops, _internals.variables[number]);
+  proc_create_data(proc_plc_var_subscribed, 0666, vardir, &proc_plc_variable_subscribed_fops, _internals.variables[number]);
+  proc_create_data(proc_plc_var_forced, 0666, vardir, &proc_plc_variable_forced_fops, _internals.variables[number]);
+  proc_create_data(proc_plc_var_force_value, 0666, vardir, &proc_plc_variable_force_value_fops, _internals.variables[number]);
+
 }
 
 void freevariables(void)
@@ -1343,428 +1301,251 @@ static const struct file_operations proc_plc_cycletimes_fops = {
 // END cycletimes
 // *******************************************************************
 
-// *******************************************************************
-// START variable read config
 
-static void pilot_plc_send_variables_readconfig_cmd(int count)
+// *******************************************************************
+// START variable stream config
+
+//static int pilot_plc_proc_stream_open(struct inode *inode, struct file *file)
+//{
+//  kfifo_reset(&_internals.event_state.events);
+//  mutex_unlock(&access_lock);
+//  return 0;
+//}
+
+static ssize_t pilot_plc_proc_stream_read(struct file *filep, char __user *buf, size_t count, loff_t *ppos)
 {
-  int i;
+  //struct pilotevent_state *pe = filep->private_data;
+  unsigned int copied;
+	int ret;
+  
+	if (count < sizeof(struct pilotevent_state))
+		return -EINVAL;
+
+	do {
+		if (kfifo_is_empty(&_internals.event_state.events)) {
+			if (filep->f_flags & O_NONBLOCK)
+				return -EAGAIN;
+
+			ret = wait_event_interruptible(_internals.event_state.wait,
+					!kfifo_is_empty(&_internals.event_state.events));
+			if (ret)
+				return ret;
+		}
+
+		if (mutex_lock_interruptible(&_internals.event_state.read_lock))
+			return -ERESTARTSYS;
+		ret = kfifo_to_user(&_internals.event_state.events, buf, count, &copied);
+		mutex_unlock(&_internals.event_state.read_lock);
+
+		if (ret)
+			return ret;
+
+		/*
+		 * If we couldn't read anything from the fifo (a different
+		 * thread might have been faster) we either return -EAGAIN if
+		 * the file descriptor is non-blocking, otherwise we go back to
+		 * sleep and wait for more data to arrive.
+		 */
+		if (copied == 0 && (filep->f_flags & O_NONBLOCK))
+			return -EAGAIN;
+
+	} while (copied == 0);
+
+
+  return copied;
+}
+
+
+static void pilot_set_module_status(module_slot_t slot, int module_status)
+{
   pilot_cmd_t cmd;
 
-  /* create the variables config cmd */
+  /* setup the cmd */
   memset(&cmd, 0, sizeof(pilot_cmd_t));
-  cmd.target = target_base;
-  cmd.type = pilot_cmd_type_plc_variables_read_config;
-  for (i = 0; i < sizeof(int); i++)
-    cmd.data[i] = BYTE_FROM_INT(count, i);
+  cmd.target = target_t_from_module_slot_and_port(slot, module_port_1);
+  cmd.type = pilot_cmd_type_module_status_set;
 
-  cmd.length = MSG_LEN(4);
-  /* send the command */
+  cmd.data[0] = (uint8_t)slot;
+  memcpy(cmd.data, (void *)&module_status, sizeof(module_status));
+  cmd.length = MSG_LEN(4); 
+
+  /* send the Cmd */
   pilot_send_cmd(&cmd);
 }
 
-static void pilot_plc_send_variables_readconfig_numbers(void)
+static ssize_t pilot_plc_proc_stream_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
-  //LOG_INFO("pilot_plc_send_variables_config_numbers() sending %i bytes", sizeof(u16) * _internals.variablestream.config.count);
-  /* send all variable numbers as a blob */
-  pilot_send(target_plc_read, (char*) _internals.variablestream.read_config.variables, sizeof(u16) * _internals.variablestream.read_config.count);
-}
-
-static void pilot_plc_check_send_variables_readconfig(void)
-{
-  int count = _internals.variablestream.read_config.count;
-
-  /* check if we need to send the variable config */
-  if (count > 0)
+  int ret = -EINVAL;
+  //pilotevent_data
+  if (count == sizeof(struct pilotevent_data)) 
   {
-    //LOG_INFO("pilot_plc_check_send_variables_config() sends %i vars", count);
-
-    /* send the variables config cmd to the pilot */
-    pilot_plc_send_variables_readconfig_cmd(count);
-
-    /* send the variable contents to the pilot */
-    pilot_plc_send_variables_readconfig_numbers();
-
-    /* reset the count back to zero */
-    _internals.variablestream.read_config.count = 0;
-  }
-}
-
-static ssize_t pilot_plc_proc_vars_readconfig_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
-{
-  int ret;
-  u16 number;  /* buffer for kstrtoX */
-  int i, start, length, var_index;
-  const char sep = ' ';
-  char buffer[8];
-  memset(buffer, 0, sizeof(buffer));
-  start = 0;
-  var_index = 0;
-
-  //LOG_INFO("count: %i", count);
-
-  /* test the user input */
-  for (i = 0; i < count; i++)
-  {
-    if (buf[i+1] == sep || /* if the next char is a separator */
-            i+1  == count)    /* or it's the last char */
+    pilot_plc_state_t value;
+    int module_status;
+    struct pilotevent_data pe;
+    ret = copy_to_user(&pe, buf, count);
+    switch (pe.cmd)
     {
-      length = i+1 - start;
-
-      /* if it fits into our buffer */
-      if (length < sizeof(buffer))
-      {
-        //LOG_INFO("copying start %i and length %i", start, length);
-        if (copy_from_user(buffer, buf + start, length) == SUCCESS)
+      case 0x1: //write variable
+        if (pe.sub < _internals.variables_count)
         {
-          /* store the numbers */
-          if (kstrtou16(buffer, 10, &number) == SUCCESS)
-          {
-            //LOG_INFO("configured variable nr: %i", number);
-            _internals.variablestream.read_config.variables[var_index++] = number;
-            _internals.variablestream.read_config.count = var_index;
-          }
+          LOG_DEBUG("stream write to variable %d received", pe.sub);
+          pilot_plc_send_set_variable_cmd(pe.sub, 0, pe.data, get_IEC_size(_internals.variables[pe.sub]->iectype));
         }
-      }
-
-      /* skip the next char as it is a separator */
-      i++;
-
-      start = i+1;
+      break;
+      case 0x10: //write plc state
+        memcpy(&value, pe.data, sizeof(pilot_plc_state_t));
+        pilot_plc_send_set_state_cmd(value);
+      break;
+      case 0x11: //write module status
+        memcpy(&module_status, pe.data, sizeof(module_status));
+        pilot_set_module_status(pe.reserved, module_status);
+      break;
     }
+
   }
-
-  ret = count;
-
+  else {
+    LOG_DEBUG("stream write with wrong length. expected: %d, got %d", sizeof(struct pilotevent_data), count);
+  }
   return ret;
 }
 
-static int pilot_plc_proc_vars_readconfig_show(struct seq_file *file, void *data)
+static unsigned int pilot_plc_proc_stream_poll(struct file *filep, poll_table *wait)
 {
-  return -EFAULT;
+  //unsigned int events = 0;
+  //pilot_plc_variable_t *variable = (pilot_plc_variable_t *)PDE_DATA(filp->f_inode);
+
+  //struct pilotevent_state *pe = filep->private_data;
+	__poll_t events = 0;
+
+	poll_wait(filep, &_internals.event_state.wait, wait);
+
+	if (!kfifo_is_empty(&_internals.event_state.events))
+  {
+    LOG_DEBUG("pilot_stream poll Events set: EPOLLPRI | EPOLLIN | EPOLLRDNORM");
+		events = EPOLLPRI | EPOLLIN | EPOLLRDNORM;
+  }
+
+	return events;
 }
 
-static int pilot_plc_proc_vars_readconfig_open(struct inode *inode, struct file *file)
+//static int pilot_plc_proc_stream_release(struct inode * inode, struct file * file)
+//{
+//  return 0;
+//}
+
+loff_t pilot_plc_proc_stream_llseek(struct file *filp, loff_t off, int whence)
 {
-  return single_open(file, pilot_plc_proc_vars_readconfig_show, PDE_DATA(inode));
+  loff_t newpos;
+
+  LOG_DEBUG("stream llseek(), whence=%i, loff=%i\n", whence, (int)off);
+
+  switch(whence) {
+   case 0: /* SEEK_SET */
+    newpos = off;
+    break;
+
+   case 1: /* SEEK_CUR */
+    newpos = filp->f_pos + off;
+    break;
+
+   case 2: /* SEEK_END */
+    //newpos = dev->size + off;
+    //currently we cannot seek to the end
+    return -ESPIPE; /* unseekable */
+    break;
+
+   default: /* can't happen */
+    return -EINVAL;
+  }
+  if (newpos<0) return -EINVAL;
+  filp->f_pos = newpos;
+  return newpos;
 }
 
-static int pilot_plc_proc_vars_readconfig_flush(struct file *file, fl_owner_t id)
+static int pilot_plc_proc_stream_flush(struct file *file, fl_owner_t id)
 {
-  pilot_plc_check_send_variables_readconfig();
   return 0;
 }
 
-static int pilot_plc_proc_vars_readconfig_release(struct inode *inode, struct file *file)
-{
-  pilot_plc_check_send_variables_readconfig();
-  return single_release(inode, file);
-}
-
-static const struct file_operations proc_plc_vars_readconfig_fops = {
+static const struct file_operations proc_plc_stream_fops = {
   .owner = THIS_MODULE,
-  .open = pilot_plc_proc_vars_readconfig_open,
-  .read = seq_read,
-  .write = pilot_plc_proc_vars_readconfig_write,
-  .flush = pilot_plc_proc_vars_readconfig_flush,
-  .release = pilot_plc_proc_vars_readconfig_release
+  //.open = pilot_plc_proc_stream_open,
+  .read = pilot_plc_proc_stream_read,
+  .write = pilot_plc_proc_stream_write,
+  .poll = pilot_plc_proc_stream_poll,
+  .llseek = pilot_plc_proc_stream_llseek,
+  .flush = pilot_plc_proc_stream_flush,
+  //.release = pilot_plc_proc_stream_release
 };
 
-// END variable read config
+// END variable stream config
 // *******************************************************************
 
-// *******************************************************************
-// START variable write config
-
-static void pilot_plc_send_variables_writeconfig_cmd(int count)
-{
-  int i;
-  pilot_cmd_t cmd;
-
-  /* create the variables config cmd */
-  memset(&cmd, 0, sizeof(pilot_cmd_t));
-  cmd.target = target_base;
-  cmd.type = pilot_cmd_type_plc_variables_write_config;
-  for (i = 0; i < sizeof(int); i++)
-    cmd.data[i] = BYTE_FROM_INT(count, i);
-
-  cmd.length = MSG_LEN(4);
-  /* send the command */
-  pilot_send_cmd(&cmd);
-}
-
-static void pilot_plc_send_variables_writeconfig_numbers(void)
-{
-  //LOG_INFO("pilot_plc_send_variables_config_numbers() sending %i bytes", sizeof(u16) * _internals.variablestream.config.count);
-  /* send all variable numbers as a blob */
-  pilot_send(target_plc_write, (char*)_internals.variablestream.write_config.variables, sizeof(u16) * _internals.variablestream.write_config.count);
-}
-
-static void pilot_plc_check_send_variables_writeconfig(void)
-{
-  int count = _internals.variablestream.write_config.count;
-
-  /* check if we need to send the variable config */
-  if (count > 0)
-  {
-    //LOG_INFO("pilot_plc_check_send_variables_config() sends %i vars", count);
-
-    /* send the variables config cmd to the pilot */
-    pilot_plc_send_variables_writeconfig_cmd(count);
-
-    /* send the variable contents to the pilot */
-    pilot_plc_send_variables_writeconfig_numbers();
-
-    /* reset the count back to zero */
-    _internals.variablestream.write_config.count = 0;
-  }
-}
-
-static ssize_t pilot_plc_proc_vars_writeconfig_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
-{
-  int ret, i, start, length, var_index, is_forced;
-  u16 number;
-  const char sep = ' ';
-  const char force = '!';
-  char buffer[8];
-  memset(buffer, 0, sizeof(buffer)); /* buffer for kstrtoX */
-  start = 0;
-  var_index = 0;
-
-  //LOG_INFO("count: %i", count);
-
-  /* test the user input */
-  for (i = 0; i < count; i++)
-  {
-    if ((is_forced = ((buf[i + 1] == force) && /* is forced if the next char is forced and */
-      (i + 2 == count || /* and it's the end of the string or */
-      buf[i + 2] == sep || buf[i + 2] == '\n'))) || /* or the char after that is a separator or line feed */
-      buf[i + 1] == sep ||   /* if the next char is a separator */
-      i + 1 == count)        /* or it's the last char */
-    {
-      length = i + 1 - start;
-
-      /* if it fits into our buffer */
-      if (length < sizeof(buffer))
-      {
-        //LOG_INFO("copying start %i and length %i", start, length);
-        if (copy_from_user(buffer, buf + start, length) == SUCCESS)
-        {
-          /* store the numbers */
-          if (kstrtou16(buffer, 10, &number) == SUCCESS)
-          {
-            LOG_DEBUG("configured variable nr: %i, is_forced: %i, start: %i, length: %i", number, is_forced, start, length);
-
-            _internals.variablestream.write_config.variables[var_index++] = VAR_TO_UINT16(number, is_forced);
-            _internals.variablestream.write_config.count = var_index;
-          }
-          else
-          {
-            LOG_DEBUG("error parsing variable! is_forced: %i, start: %i, length: %i", is_forced, start, length);
-          }
-        }
-      }
-
-      if (is_forced)
-        i++;
-
-      /* skip the next char */
-      i++;
-
-      start = i + 1;
-    }
-  }
-
-  ret = count;
-
-  return ret;
-}
-
-static int pilot_plc_proc_vars_writeconfig_show(struct seq_file *file, void *data)
-{
-  return -EFAULT;
-}
-
-static int pilot_plc_proc_vars_writeconfig_open(struct inode *inode, struct file *file)
-{
-  return single_open(file, pilot_plc_proc_vars_writeconfig_show, PDE_DATA(inode));
-}
-
-static int pilot_plc_proc_vars_writeconfig_flush(struct file *file, fl_owner_t id)
-{
-  pilot_plc_check_send_variables_writeconfig();
-  return 0;
-}
-
-static int pilot_plc_proc_vars_writeconfig_release(struct inode *inode, struct file *file)
-{
-  pilot_plc_check_send_variables_writeconfig();
-  return single_release(inode, file);
-}
-
-static const struct file_operations proc_plc_vars_writeconfig_fops = {
-  .owner = THIS_MODULE,
-  .open = pilot_plc_proc_vars_writeconfig_open,
-  .read = seq_read,
-  .write = pilot_plc_proc_vars_writeconfig_write,
-  .flush = pilot_plc_proc_vars_writeconfig_flush,
-  .release = pilot_plc_proc_vars_writeconfig_release
-};
-
-// END variable write config
-// *******************************************************************
-
-// *******************************************************************
-// START variable value
-
-static void pilot_plc_send_get_variable_values_cmd(void)
+/*  */
+static int pilot_try_get_fwinfo(uint8_t n, int timeout)
 {
   pilot_cmd_t cmd;
-  memset(&cmd, 0, sizeof(pilot_cmd_t));
-  cmd.target = target_base;
-  cmd.type = pilot_cmd_type_plc_variables_get;
-  cmd.length = 0; //no payload
-
-  pilot_send_cmd(&cmd);
-}
-
-
-static int pilot_plc_try_get_variable_values(int timeout, pilot_plc_variables_values_t **values)
-{
   int is_timedout = 0;
   unsigned long timestamp;
 
-  /* reset the variables update */
-  _internals.variablestream.is_values_updated = 0;
+  /* reset the uid_is_updated flag */
+  _internals.is_fwinfo_updated = false;
 
-  /* send a get variable values request to the pilot */
-  pilot_plc_send_get_variable_values_cmd();
+  /* send the request */
+  memset(&cmd, 0, sizeof(pilot_cmd_t));
+  cmd.data[0] = n;
+  cmd.target = target_base;
+  cmd.type = pilot_cmd_type_fwinfo;
+  cmd.length = MSG_LEN(1);
+
+  pilot_send_cmd(&cmd);
 
   /* pick a time that is timeout ms in the future */
   timestamp = jiffies + (timeout * HZ / 1000);
 
   /* wait until the state is updated or the timeout occurs */
-  while (_internals.variablestream.is_values_updated == 0)
+  while (_internals.is_fwinfo_updated == false) 
     if (time_after(jiffies, timestamp))
     {
       is_timedout = 1;
       break;
     }
 
-  /* set the variables */
-  if (!is_timedout)
-    *values = &_internals.variablestream.read_values;
-
-  if (is_timedout)
-  {
-    //LOG_INFO("pilot_plc_try_get_vars() timedout while waiting for variable values!");
-  }
-
-  /* return 0 on success, otherwise 1 */
-  return is_timedout;
+  return is_timedout ? -1 : SUCCESS;
 }
 
-static int pilot_plc_proc_vars_value_show(struct seq_file *file, void *data)
+static int pilot_proc_plc_fwinfo_show(struct seq_file *file, void *data)
 {
   int ret;
-  pilot_plc_variables_values_t *values;
-
-  if (pilot_plc_try_get_variable_values(100, &values) == SUCCESS)
+  if (pilot_try_get_fwinfo(1, 500) == SUCCESS)
   {
-    seq_write(file, values->data, values->index);
+    _internals.fwinfo[pilot_cmd_t_data_size-1] = 0; //safety terminating char
+    seq_printf(file, "%s\n", _internals.fwinfo);
     ret = 0;
   }
   else
-  {
     ret = -EFAULT;
-  }
 
   return ret;
 }
 
-static int pilot_plc_proc_vars_value_open(struct inode *inode, struct file *file)
+static int pilot_proc_plc_fwinfo_open(struct inode *inode, struct file *file)
 {
-  return single_open(file, pilot_plc_proc_vars_value_show, PDE_DATA(inode));
+  return single_open(file, pilot_proc_plc_fwinfo_show, NULL);
 }
 
-static ssize_t pilot_plc_proc_vars_value_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
-{
-  int i;
-
-  for (i = 0; i < count; i++)
-  {
-    /* store the data in the internal buffer, if there is space left */
-    if (_internals.variablestream.write_value.index < MAX_VAR_VALUE_SIZE)
-      _internals.variablestream.write_value.data[_internals.variablestream.write_value.index++] = buf[i];
-    else
-      return -EINVAL; /* return an error if the buffer is full */
-  }
-
-  return count;
-}
-
-static void pilot_plc_send_vars_value_cmd(void)
-{
-  int i;
-  pilot_cmd_t cmd;
-
-  /* setup the cmd */
-  memset(&cmd, 0, sizeof(pilot_cmd_t));
-  cmd.target = target_plc_write;
-  cmd.type = pilot_cmd_type_plc_variables_set;
-  for (i = 0; i < sizeof(int); i++)
-    cmd.data[i] = BYTE_FROM_INT(_internals.variablestream.write_value.index, i);
-
-  cmd.length = MSG_LEN(4);
-
-  /* send the cmd */
-  pilot_send_cmd(&cmd);
-}
-
-static void pilot_plc_check_send_vars_value(void)
-{
-  /* check if we have data to send */
-  if (_internals.variablestream.write_value.index > 0)
-  {
-    /* send the set variable values cmd */
-    pilot_plc_send_vars_value_cmd();
-
-    /* send the variable values */
-    pilot_send(target_plc_write, _internals.variablestream.write_value.data, _internals.variablestream.write_value.index);
-
-    /* reset the count */
-    _internals.variablestream.write_value.index = 0;
-  }
-}
-
-static int pilot_plc_proc_vars_value_flush(struct file *file, fl_owner_t id)
-{
-  pilot_plc_check_send_vars_value();
-  return 0;
-}
-
-static int pilot_plc_proc_vars_value_release(struct inode *inode, struct file *file)
-{
-  pilot_plc_check_send_vars_value();
-  return single_release(inode, file);
-}
-
-static const struct file_operations proc_plc_vars_value_fops = {
-  .owner = THIS_MODULE,
-  .open = pilot_plc_proc_vars_value_open,
-  .read = seq_read,
-  .write = pilot_plc_proc_vars_value_write,
-  .flush = pilot_plc_proc_vars_value_flush,
-  .release = pilot_plc_proc_vars_value_release
+static const struct file_operations proc_plc_fwinfo_fops = {
+  .owner   = THIS_MODULE,
+  .open    = pilot_proc_plc_fwinfo_open,
+  .read    = seq_read,
+  .llseek  = seq_lseek,
+  .release = single_release
 };
-
-// END variable value
-// *******************************************************************
 
 /* register the /proc/pilot/plc/... files */
 static void pilot_plc_proc_init(void)
 {
-  struct proc_dir_entry *pilot_dir, *plc_dir, *vars_config_dir;
+  struct proc_dir_entry *pilot_dir, *plc_dir;
 
   /* get the /proc/pilot base dir */
   _internals.proc_pilot_dir = pilot_dir = pilot_get_proc_pilot_dir();
@@ -1772,26 +1553,20 @@ static void pilot_plc_proc_init(void)
   /* create the /proc/pilot/plc directory */
   _internals.proc_pilot_plc_dir = plc_dir = proc_mkdir_mode(proc_plc_name, 0, pilot_dir);
 
+  /* create the file /proc/pilot/plc/fwinfo (r) */
+  proc_create_data(proc_plc_fwinfo_name, 0666, plc_dir, &proc_plc_fwinfo_fops, NULL);
+
   /* create the file /proc/pilot/plc/state (r/w) */
   proc_create_data(proc_plc_state_name, 0666, plc_dir, &proc_plc_state_fops, NULL);
 
   /* create the file /proc/pilot/plc/cycletimes (read-only) */
   proc_create_data(proc_plc_cycletimes_name, 0, plc_dir, &proc_plc_cycletimes_fops, NULL);
 
-  /* create the /proc/pilot/plc/varconfig directory */
-  _internals.proc_pilot_plc_varconfig_dir = vars_config_dir = proc_mkdir_mode(proc_plc_varconfig_name, 0, plc_dir);
+  /* create the file /proc/pilot/plc/stream (r/w) */
+  proc_create_data(proc_plc_vars_stream_name, 0666, plc_dir, &proc_plc_stream_fops, NULL);
 
-  /* create the file /proc/pilot/plc/varconfig/read_config (w) */
-  proc_create_data(proc_plc_vars_readconfig_name, 0222, vars_config_dir, &proc_plc_vars_readconfig_fops, NULL);
-
-  /* create the file /proc/pilot/plc/varconfig/write_config (w) */
-  proc_create_data(proc_plc_vars_writeconfig_name, 0222, vars_config_dir, &proc_plc_vars_writeconfig_fops, NULL);
-
-  /* create the file /proc/pilot/plc/varconfig/value (r) */
-  proc_create_data(proc_plc_vars_value_name, 0666, vars_config_dir, &proc_plc_vars_value_fops, NULL);
-
-  /* create the file /proc/pilot/plc/varconfig/variables (r/w) */
-  proc_create_data(proc_plc_variables_name, 0666, vars_config_dir, &proc_plc_variables_fops, NULL);
+  /* create the file /proc/pilot/plc/varconfig (r/w) */
+  proc_create_data(proc_plc_varconfig_name, 0666, plc_dir, &proc_plc_variables_fops, NULL);
 }
 
 /* unregister the /proc/pilot/plc/... files */
@@ -1827,62 +1602,119 @@ static void pilot_plc_proc_deinit(void)
 // *******************************************************************
 // START pilot interface function implementation
 
+static uint8_t *get_plc_var(uint8_t *data, plc_var_t *out) {
+  msg_plc_var_t *v = (msg_plc_var_t *)data;
+  uint8_t len = v->opt & 0xF;
+  out->number = v->number;
+  out->subvalue = (v->opt >> 4) & 0x3;
+
+  memset(out->value, 0, sizeof(out->value));
+
+  if (len > sizeof(out->value))
+    return NULL; //not allowed
+  
+  memcpy(out->value, v->value, len);
+
+  if (v->opt & 0x80)
+    return data + 3 + len; //move pointer to next element
+    
+  return NULL; //no further variables
+}
+
 /* the command callback handler */
 static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
 {
   pilot_cmd_handler_status_t ret;
-  uint16_t number;
-  char dummy[8];
+  struct pilotevent_data pe;
+  char dummy[MSG_PLC_VAR_MAX_LEN];
+  plc_var_t v;
+  msg_plc_var_config_t *c;
+  uint8_t *p;
+  int i;
 
   //LOG_DEBUG("pilot_callback_cmd_received() called");
 
   switch (cmd.type)
   {
-    case pilot_cmd_type_plc_variable_get:
-    number = *((uint16_t *)&cmd.data[8]) & 0xFFF;
-    if (number < _internals.variables_count)
-    {
-       if (mutex_lock_interruptible(&access_lock))
-        return -ERESTARTSYS;
-
-      //_internals.variables[number]->get_flags = *((uint16_t *)&cmd.data[8]) & 0xF000;
-      //memcpy(_internals.variables[number]->value, cmd.data, 8); //actual var length...
-      while (kfifo_avail(&_internals.variables[number]->fifo) < 8)
-        ret = kfifo_out(&_internals.variables[number]->fifo, dummy, 8); //get rid of old value when fifo is full
-
-      kfifo_in(&_internals.variables[number]->fifo,cmd.data, 8);
-
-      mutex_unlock(&access_lock);
-
-      wake_up_poll(&_internals.variables[number]->in_queue, POLLIN);
-      //LOG_DEBUG("value queued and wake_up_poll() called");
-
-      //LOG_DEBUG("pilot_callback_cmd_received() received pilot_cmd_type_plc_variable_get answer, variable number %i", _internals.variables[number]->number);
-    }
-    ret = pilot_cmd_handler_status_handled;
-    break;
-
     case pilot_cmd_type_plc_variable_set:
-    number = *((uint16_t *)&cmd.data[8]) & 0xFFF;
-    LOG_DEBUG("pilot_callback_cmd_received() received plc_state_set answer, varnum=%i (max=%i)", number,  _internals.variables_count);
-    if (number < _internals.variables_count)
+    case pilot_cmd_type_plc_variable_get:
+      p = cmd.data;
+      for (i=0; i<(sizeof(cmd.data)/16) && p != NULL; i++) //dont use while(p) to safeguard against malformed data. Max size of var packet is 11 (we use 16, that makes a maximum of 12 vars in one msg )
+      {
+        p = get_plc_var(p, &v);
+        if (v.number < _internals.variables_count)
+        {
+          //queue event
+          pe.cmd = 0x1; //get var event
+          pe.sub = v.number;
+          memcpy(&pe.data, v.value, sizeof(pe.data));
+
+          LOG_DEBUG("received variable %d, subvalue %d: %02X %02X %02X %02X %02X %02X %02X %02X", v.number, v.subvalue,
+            v.value[0], v.value[1], v.value[2], v.value[3], v.value[4], v.value[5], v.value[6], v.value[7]   );
+          if (kfifo_put(&_internals.event_state.events, pe) != 0)
+          {
+		        wake_up_poll(&_internals.event_state.wait, EPOLLIN | EPOLLPRI);
+          }
+           //now send to variable specific fifo
+          if (!mutex_lock_interruptible(&access_lock)) 
+          {
+            while (kfifo_avail(&_internals.variables[v.number]->fifo) < MSG_PLC_VAR_MAX_LEN)
+              ret = kfifo_out(&_internals.variables[v.number]->fifo, dummy, MSG_PLC_VAR_MAX_LEN); //get rid of old value when fifo is full
+
+            kfifo_in(&_internals.variables[v.number]->fifo,v.value, MSG_PLC_VAR_MAX_LEN);
+            mutex_unlock(&access_lock);
+            wake_up_poll(&_internals.variables[v.number]->in_queue, POLLIN | EPOLLPRI);
+          }
+        }
+      }
+      ret = pilot_cmd_handler_status_handled;
+    break;
+
+    //case pilot_cmd_type_plc_variable_set:
+    //  // TODO - response when setting var
+    //  ret = pilot_cmd_handler_status_handled;
+    //break;
+  
+  case pilot_cmd_type_plc_read_var_config:
+    c = (msg_plc_var_config_t *)&cmd.data;
+    if (c->number < _internals.variables_count) 
     {
-      if (mutex_lock_interruptible(&access_lock))
-        return -ERESTARTSYS;
-
-      _internals.variables[number]->set_flags = *((uint16_t *)&cmd.data[8]) & 0xF000;
-      //memcpy(_internals.variables[number]->value, cmd.data, 8); //actual var length...
-      while (kfifo_avail(&_internals.variables[number]->fifo) < 8)
-        ret = kfifo_out(&_internals.variables[number]->fifo, dummy, 8); //get rid of old value when fifo is full
-
-      kfifo_in(&_internals.variables[number]->fifo,cmd.data, 8);
-
-      mutex_unlock(&access_lock);
-
-      wake_up_poll(&_internals.variables[number]->in_queue, POLLIN);
+      switch(c->config)
+      {
+        case 1: 
+          _internals.variables[c->number]->subscribed = c->value > 0 ? true : false;
+          _internals.variables[c->number]->is_subscribed_updated = true;
+          break;
+        case 2: 
+          _internals.variables[c->number]->forced = c->value > 0 ? true : false;
+          _internals.variables[c->number]->is_forced_updated = true;
+          break;
+        default:
+          //unknown command
+        break;
+      }
     }
     ret = pilot_cmd_handler_status_handled;
-    break;
+  break;
+  case pilot_cmd_type_plc_write_var_config:
+    c = (msg_plc_var_config_t *)&cmd.data;
+    if (c->number < _internals.variables_count) 
+    {
+      switch(c->config)
+      {
+        case 1: 
+          _internals.variables[c->number]->is_subscribed_updated = true;
+          break;
+        case 2: 
+          _internals.variables[c->number]->is_forced_updated = true;
+          break;
+        default:
+          //unknown command
+        break;
+      }
+    }
+    ret = pilot_cmd_handler_status_handled;
+  break;
 
     /* we're receiving the answer to the plc_state_get command */
   case pilot_cmd_type_plc_state_get:
@@ -1890,7 +1722,25 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
     mb();
     _internals.is_state_updated = 1;
 
+    pe.cmd = 0x10;
+    memcpy(&pe.data, (void*)&_internals.state, sizeof(int));
+    if (kfifo_put(&_internals.event_state.events, pe) != 0)
+    {
+		  wake_up_poll(&_internals.event_state.wait, EPOLLIN | EPOLLPRI);
+    }
+
     LOG_DEBUG("pilot_callback_cmd_received() received plc_state_get answer");
+    /* mark the command as handled */
+    ret = pilot_cmd_handler_status_handled;
+    break;
+  case pilot_cmd_type_module_status_get:
+    pe.cmd = 0x11;
+    pe.reserved = target_t_get_module_slot(cmd.target);
+    memcpy(&pe.data, (void*)cmd.data, sizeof(int));
+    if (kfifo_put(&_internals.event_state.events, pe) != 0)
+    {
+		  wake_up_poll(&_internals.event_state.wait, EPOLLIN | EPOLLPRI);
+    }
     /* mark the command as handled */
     ret = pilot_cmd_handler_status_handled;
     break;
@@ -1906,21 +1756,24 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
     _internals.cycletimes.write = UINT16_FROM_BYTES((cmd.data + (int)pilot_plc_cycletimes_index_write));
 
     mb();
-    _internals.is_cycletimes_updated = 1;
+    _internals.is_cycletimes_updated = true;
 
     LOG_DEBUG("pilot_callback_cmd_received() received plc_cycletimes_get answer");
     /* mark the command as handled */
     ret = pilot_cmd_handler_status_handled;
     break;
+  case pilot_cmd_type_fwinfo:
+    if (cmd.data[0] > 0)
+    {
+      strncpy((uint8_t *)_internals.fwinfo, &cmd.data[1], pilot_cmd_t_data_size-1);
+      mb();
+      _internals.is_fwinfo_updated = true;
 
-  case pilot_cmd_type_plc_variables_get:
-    _internals.variablestream.read_values.index = 0;
-    _internals.variablestream.read_values.expected = INT_FROM_BYTES((cmd.data + (int)pilot_plc_variables_value_index_size));
-    //LOG_INFO("pilot_callback_cmd_received() received plc_variables_get answer");
-    ret = pilot_cmd_handler_status_handled;
-    break;
+      ret = pilot_cmd_handler_status_handled;
+    }
+  break;
 
-  default: ret = pilot_cmd_handler_status_ignored;  break;
+    default: ret = pilot_cmd_handler_status_ignored;  break;
   }
 
   return ret;
@@ -1929,15 +1782,7 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
 /* the read stream handler */
 static void pilot_plc_read_stream_callback(char data)
 {
-  //LOG_INFO("pilot_plc_stream_callback() recv: %x", data);
-
   /* handle the received data */
-  if (_internals.variablestream.read_values.index < MAX_VAR_VALUE_SIZE)
-  {
-    _internals.variablestream.read_values.data[_internals.variablestream.read_values.index++] = data;
-    if (_internals.variablestream.read_values.index >= _internals.variablestream.read_values.expected)
-      _internals.variablestream.is_values_updated = 1;
-  }
 }
 
 // END pilot interface function implementation
@@ -1959,6 +1804,11 @@ static int __init pilot_plc_init()
 
   mutex_init(&access_lock);
 
+  //stream data init 
+  mutex_init(&_internals.event_state.read_lock);
+  INIT_KFIFO(_internals.event_state.events);
+  init_waitqueue_head(&_internals.event_state.wait);
+
   /* register the filesystem entries */
   pilot_plc_proc_init();
 
@@ -1966,10 +1816,10 @@ static int __init pilot_plc_init()
   if (pilot_register_cmd_handler(&pilot_cmd_handler) == SUCCESS)
   {
     LOG_DEBUG("pilot_register_cmd_handler() succeeded");
-    _internals.is_cmd_handler_registered = 1;
+    _internals.is_cmd_handler_registered = true;
 
     pilot_register_stream_handler(target_plc_read, &pilot_plc_read_stream_callback);
-    _internals.is_read_stream_handler_registered = 1;
+    _internals.is_read_stream_handler_registered = true;
 
     ret = SUCCESS;
   }
@@ -1988,17 +1838,18 @@ static void __exit pilot_plc_exit()
   /* unregister with the base driver */
   if (_internals.is_cmd_handler_registered) {
     if (pilot_unregister_cmd_handler(&pilot_cmd_handler) == SUCCESS)
-      _internals.is_cmd_handler_registered = 0;
+      _internals.is_cmd_handler_registered = false;
   }
 
   if (_internals.is_read_stream_handler_registered) {
     pilot_unregister_stream_handler(target_plc_read);
-    _internals.is_read_stream_handler_registered = 0;
+    _internals.is_read_stream_handler_registered = false;
   }
 
   /* free plc variables related memory */
   freevariables();
 
+  kfifo_free(&_internals.event_state.events);
   /* unregister the filesystem entries */
   pilot_plc_proc_deinit();
 }

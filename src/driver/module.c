@@ -146,6 +146,7 @@ static const struct file_operations proc_pilot_spiclk_fops,
                                     proc_pilot_stats_fops,
                                     proc_pilot_last_recv_cmd_fops,
                                     proc_pilot_module_type_fops,
+                                    proc_pilot_module_status_fops,
                                     proc_pilot_module_firmware_type_fops,
                                     proc_pilot_module_uid_fops,
                                     proc_pilot_module_hid_fops,
@@ -153,7 +154,8 @@ static const struct file_operations proc_pilot_spiclk_fops,
                                     proc_pilot_module_eeprom_user_fops,
                                     proc_pilot_test_fops,
                                     proc_pilot_uid_fops,
-                                    proc_pilot_fwinfo_fops;
+                                    proc_pilot_fwinfo_fops,
+                                    proc_pilot_uart_mode_fops;
 
 /* module entry point function, gets called when loading the module */
 module_init(rpc_init);
@@ -280,12 +282,13 @@ static void pilot_internals_init()
 
   INIT_WQ_HEAD(_internals.test_result_is_updated_wq);
   INIT_WQ_HEAD(_internals.uid_is_updated_wq);
+  INIT_WQ_HEAD(_internals.uart_mode_is_updated_wq);
   INIT_WQ_HEAD(_internals.fwinfo_is_updated_wq);
   start_spi_us = end_spi_us = ktime_to_us(ktime_get());
   _internals.spiclk = 10000000;
 }
 
-#define TARGET_INVALID_BLOCK_SIZE 12
+#define TARGET_INVALID_BLOCK_SIZE 32
 static int pilot_comm_task(void *vp)
 {
   static spidata_t target_invalid_block[TARGET_INVALID_BLOCK_SIZE] = { [ 0 ... TARGET_INVALID_BLOCK_SIZE-1 ] = target_invalid};
@@ -520,6 +523,7 @@ static irqreturn_t rpc_irq_data_m2r_handler(int irq, void* dev_id)
 static void pilot_spi0_handle_received_base_cmd(pilot_cmd_t *cmd)
 {
   int i, data_index;
+  target_t slot = target_t_get_module_slot(cmd->target);
 
   /* handle the cmd */
   switch (cmd->type)
@@ -540,9 +544,9 @@ static void pilot_spi0_handle_received_base_cmd(pilot_cmd_t *cmd)
     else /* update the module uids */
     {
       for (i = 0; i < pilot_cmd_t_data_size && i < EEPROM_UID_LENGTH; i++)
-        _internals.modules[target_t_get_module_slot(cmd->target)].uid.uid[i] = cmd->data[i];
-      _internals.modules[target_t_get_module_slot(cmd->target)].uid_is_updated = 1; /* mark the uid as updated */
-      WAIT_WAKEUP(_internals.modules[target_t_get_module_slot(cmd->target)].uid_is_updated_wq);
+        _internals.modules[slot].uid.uid[i] = cmd->data[i];
+      _internals.modules[slot].uid_is_updated = 1; /* mark the uid as updated */
+      WAIT_WAKEUP(_internals.modules[slot].uid_is_updated_wq);
     }
 
     break;
@@ -550,17 +554,17 @@ static void pilot_spi0_handle_received_base_cmd(pilot_cmd_t *cmd)
   case pilot_cmd_type_eeprom_hid_get:
     /* update the hid */
     for (i = 0; i < pilot_cmd_t_data_size && i < EEPROM_HID_LENGTH; i++)
-      _internals.modules[target_t_get_module_slot(cmd->target)].hid.data[i] = cmd->data[i];
-    _internals.modules[target_t_get_module_slot(cmd->target)].hid_is_updated = 1; /* mark the hid as updated */
-    WAIT_WAKEUP(_internals.modules[target_t_get_module_slot(cmd->target)].hid_is_updated_wq);
+      _internals.modules[slot].hid.data[i] = cmd->data[i];
+    _internals.modules[slot].hid_is_updated = 1; /* mark the hid as updated */
+    WAIT_WAKEUP(_internals.modules[slot].hid_is_updated_wq);
     break;
 
   case pilot_cmd_type_eeprom_fid_get:
     /* update the fid */
     for (i = 0; i < pilot_cmd_t_data_size && i < EEPROM_FID_LENGTH; i++)
-      _internals.modules[target_t_get_module_slot(cmd->target)].fid.data[i] = cmd->data[i];
-    _internals.modules[target_t_get_module_slot(cmd->target)].fid_is_updated = 1; /* mark the fid as updated */
-    WAIT_WAKEUP(_internals.modules[target_t_get_module_slot(cmd->target)].fid_is_updated_wq);
+      _internals.modules[slot].fid.data[i] = cmd->data[i];
+    _internals.modules[slot].fid_is_updated = 1; /* mark the fid as updated */
+    WAIT_WAKEUP(_internals.modules[slot].fid_is_updated_wq);
     break;
 
   case pilot_cmd_type_eeprom_userdata_get:
@@ -575,16 +579,19 @@ static void pilot_spi0_handle_received_base_cmd(pilot_cmd_t *cmd)
   case pilot_cmd_type_module_type_get:
     /* update the module_type */
     for (i = 0; i < pilot_cmd_t_data_size && i < MODULE_TYPE_LENGTH; i++)
-      _internals.modules[target_t_get_module_slot(cmd->target)].type.name[i] = cmd->data[i];
-    _internals.modules[target_t_get_module_slot(cmd->target)].type_is_updated = 1; /* mark the type as updated */
-    WAIT_WAKEUP(_internals.modules[target_t_get_module_slot(cmd->target)].type_is_updated_wq);
+      _internals.modules[slot].type.name[i] = cmd->data[i];
+    _internals.modules[slot].type_is_updated = 1; /* mark the type as updated */
+    WAIT_WAKEUP(_internals.modules[slot].type_is_updated_wq);
     break;
   case pilot_cmd_type_fwinfo:
     /* update fw info */
-    for (i = 0; i < pilot_cmd_t_data_size && i < MODULE_FWINFO_LENGTH; i++)
-      _internals.fwinfo[i] = cmd->data[i];
-    _internals.fwinfo_is_updated = 1; /* mark fwinfo as updated */
-    WAIT_WAKEUP(_internals.fwinfo_is_updated_wq);
+    if (cmd->data[0] == 0)
+    {
+      for (i = 0; i < (pilot_cmd_t_data_size-1) && i < MODULE_FWINFO_LENGTH; i++)
+        _internals.fwinfo[i] = cmd->data[i+1];
+      _internals.fwinfo_is_updated = 1; /* mark fwinfo as updated */
+      WAIT_WAKEUP(_internals.fwinfo_is_updated_wq);
+    }
     break;
   case pilot_cmd_type_test_run:
     /* update the test results */
@@ -596,6 +603,25 @@ static void pilot_spi0_handle_received_base_cmd(pilot_cmd_t *cmd)
     _internals.test_result.count_total = (int)cmd->data[(int)pilot_test_run_index_total_count];
     _internals.test_result.result = (pilot_test_run_result_t)cmd->data[(int)pilot_test_run_index_result];
     _internals.test_result_is_updated = 1; /* mark the test results as updated */
+    WAIT_WAKEUP(_internals.test_result_is_updated_wq);
+    break;
+  case pilot_cmd_type_module_status_get:
+    /* update the module_type */
+    _internals.modules[slot].status = *((int *)cmd->data);
+    _internals.modules[slot].status_is_updated = 1; /* mark the type as updated */
+    WAIT_WAKEUP(_internals.modules[slot].status_is_updated_wq);
+    break;
+  case pilot_cmd_type_module_status_set:
+    _internals.modules[slot].status_is_updated = 1; /* mark the type as updated */
+    WAIT_WAKEUP(_internals.modules[slot].status_is_updated_wq);
+    break;
+  case pilot_cmd_type_uart_mode_get:
+    _internals.uartmode = *((int *)cmd->data);
+    _internals.uart_mode_is_updated = 1; 
+    WAIT_WAKEUP(_internals.test_result_is_updated_wq);
+    break;
+  case pilot_cmd_type_uart_mode_set:
+    _internals.uart_mode_is_updated = 1; 
     WAIT_WAKEUP(_internals.test_result_is_updated_wq);
     break;
   }
@@ -666,8 +692,16 @@ static void pilot_spi0_handle_received_cmd_byte(target_t target, uint8_t data)
       break;
       case (uint8_t)target_base_reserved: _internals.current_cmd.cmd.reserved = data; _internals.current_cmd.cmd_completion |= 0x8; break;
       default:
-        //general error in transmission structure, reset
-        _internals.current_cmd.cmd_completion = 0x0;
+        if (target == target_invalid && data == 0) 
+        {
+          //dummy byte, ignore
+          return;
+        } 
+        else 
+        {
+          //general error in transmission structure, reset
+          _internals.current_cmd.cmd_completion = 0x0;
+        }
       break;
     }
   }
@@ -833,6 +867,7 @@ static void rpc_spi0_handle_received_data(spidata_t miso)
 #define pilot_proc_modules_name   "modules" /* filename: /proc/pilot/modules */
 static char* pilot_proc_module_dir_names[] = { "module1", "module2", "module3", "module4" };
 #define pilot_proc_module_type_name "type"  /* filename: /proc/pilot/moduleX/type */
+#define pilot_proc_module_status_name "status"  /* filename: /proc/pilot/moduleX/status */
 #define pilot_proc_module_firmware_type_name "firmware_type" /* /proc/pilot/moduleX/firmware_type */
 #define pilot_proc_module_eeprom_dir_name "eeprom" /* directory name: /proc/pilot/moduleX/eeprom */
 #define pilot_proc_module_uid "uid" /* filename: /proc/pilot/moduleX/uid */
@@ -845,6 +880,7 @@ static char* pilot_proc_module_eeprom_user_names[] = { "user00", "user01", "user
 #define pilot_proc_stats_name "stats"/* /proc/pilot/stats */
 #define pilot_proc_last_recv_cmd_name "last_recv_cmd"  /* /proc/pilot/last_recv_cmd */
 #define pilot_proc_test_name "test" /* /proc/pilot/test */
+#define pilot_proc_uart_mode_name "uartmode" /* /proc/pilot/uartmode */
 #define pilot_proc_uid_name "uid" /* filename: /proc/pilot/uid */
 #define pilot_proc_fwinfo_name "fwinfo" /* filename: /proc/pilot/fwinfo */
 #define RPC_PROC_BUFFER_SIZE 255
@@ -881,6 +917,9 @@ static void rpc_proc_init(void)
   /* register the /proc/pilot/test file */
   proc_create_data(pilot_proc_test_name, 0 /* r */, base_dir, &proc_pilot_test_fops, NULL);
 
+  /* register the /proc/pilot/uart file */
+  proc_create_data(pilot_proc_uart_mode_name, 0666 /* r+w */, base_dir, &proc_pilot_uart_mode_fops, NULL);
+
   /* register the /proc/pilot/eeprom file */
   proc_create_data(pilot_proc_uid_name, 0 /* r */, base_dir, &proc_pilot_uid_fops, NULL);
 
@@ -899,6 +938,9 @@ static void rpc_proc_init(void)
     /* create a readable proc entry for the module firmware type (/proc/pilot/moduleX/firmware_type) */
     proc_create_data(pilot_proc_module_firmware_type_name, 0, module_dir, &proc_pilot_module_firmware_type_fops, (void*)i);
 
+    /* module state */
+    proc_create_data(pilot_proc_module_status_name, 0666 /* r+w */, module_dir, &proc_pilot_module_status_fops, (void*)i);
+
     /* register a directory for all eeprom entries */
     _internals.proc_pilot_modules_eeprom_dir[i] = eeprom_dir = proc_mkdir_mode(pilot_proc_module_eeprom_dir_name, 0,  module_dir);
 
@@ -911,6 +953,7 @@ static void rpc_proc_init(void)
     /* create a read- and writeable proc entry for the eeprom fid */
     proc_create_data(pilot_proc_module_fid, 0666 /* r+w */, eeprom_dir, &proc_pilot_module_fid_fops, (void*)i);
 
+    INIT_WQ_HEAD(_internals.modules[i].status_is_updated_wq);
     INIT_WQ_HEAD(_internals.modules[i].type_is_updated_wq);
     INIT_WQ_HEAD(_internals.modules[i].uid_is_updated_wq);
     INIT_WQ_HEAD(_internals.modules[i].hid_is_updated_wq);
@@ -948,6 +991,9 @@ static void rpc_proc_deinit(void)
   /* remove /proc/pilot/test */
   remove_proc_entry(pilot_proc_test_name, _internals.proc_pilot_dir);
 
+  /* remove /proc/pilot/uart */
+  remove_proc_entry(pilot_proc_uart_mode_name, _internals.proc_pilot_dir);
+
   /* remove /proc/pilot/uid */
   remove_proc_entry(pilot_proc_uid_name, _internals.proc_pilot_dir);
 
@@ -962,6 +1008,9 @@ static void rpc_proc_deinit(void)
 
     /* remove the /proc/pilot/moduleX/firmware_type entry */
     remove_proc_entry(pilot_proc_module_firmware_type_name, _internals.proc_pilot_modules_dir[i]);
+
+    /* remove the /proc/pilot/moduleX/module_status entry */
+    remove_proc_entry(pilot_proc_module_status_name, _internals.proc_pilot_modules_dir[i]);
 
     /* remove the /proc/pilot/moduleX/eeprom/uid entry */
     remove_proc_entry(pilot_proc_module_uid, _internals.proc_pilot_modules_eeprom_dir[i]);
@@ -1392,6 +1441,248 @@ static void rpc_unassign_slot(module_slot_t slot)
    }
 }
 
+static int pilot_try_get_uart_mode(int timeout, int *uart_mode)
+{
+  pilot_cmd_t cmd;
+  int timedout = 0;
+
+  _internals.uart_mode_is_updated = 0;
+
+  /* setup the cmd */
+  memset(&cmd, 0, sizeof(pilot_cmd_t));
+  cmd.target = target_base;
+  cmd.type = pilot_cmd_type_uart_mode_get;
+  cmd.length = 0; //no payload
+
+  /* send the Cmd */
+  pilot_send_cmd(&cmd);
+
+  /* wait until the uid is updated or the timeout occurs */
+  if (WAIT_EVENT_INTERRUPTIBLE_TIMEOUT(_internals.uart_mode_is_updated_wq, _internals.uart_mode_is_updated != 0, (timeout * HZ / 1000)) <= 0)
+  {
+    timedout = 1;
+    LOG_INFO("pilot_try_get_uart_mode() timeout reached while waiting for fid!");
+  }
+  else
+  {
+    *uart_mode = _internals.uartmode;    
+    LOG_DEBUGALL("pilot_try_get_uart_mode() successful");
+  }
+
+  return timedout ? -1 : SUCCESS;
+}
+
+static int pilot_try_set_uart_mode(int timeout, int uart_mode)
+{
+  pilot_cmd_t cmd;
+  int timedout = 0;
+
+  _internals.uart_mode_is_updated = 0;
+
+  /* setup the cmd */
+  memset(&cmd, 0, sizeof(pilot_cmd_t));
+  cmd.target = target_base;
+  cmd.type = pilot_cmd_type_uart_mode_set;
+  memcpy(cmd.data, (void *)&uart_mode, sizeof(uart_mode));
+  cmd.length = MSG_LEN(4); 
+
+  /* send the Cmd */
+  pilot_send_cmd(&cmd);
+
+  /* wait until the uid is updated or the timeout occurs */
+  if (WAIT_EVENT_INTERRUPTIBLE_TIMEOUT(_internals.uart_mode_is_updated_wq, _internals.uart_mode_is_updated != 0, (timeout * HZ / 1000)) <= 0)
+  {
+    timedout = 1;
+    LOG_INFO("pilot_try_get_uart_mode() timeout reached while waiting for fid!");
+  }
+  else
+  {
+    LOG_DEBUGALL("pilot_try_get_uart_mode() successful");
+  }
+
+  return timedout ? -1 : SUCCESS;
+}
+
+
+static int pilot_try_get_module_status(int timeout, module_slot_t slot, int *module_status)
+{
+  pilot_cmd_t cmd;
+  int timedout = 0;
+
+  _internals.modules[slot].status_is_updated = 0;
+
+  /* setup the cmd */
+  memset(&cmd, 0, sizeof(pilot_cmd_t));
+  cmd.target = target_t_from_module_slot_and_port(slot, module_port_1);
+  cmd.type = pilot_cmd_type_module_status_get;
+  cmd.length = 0; //empty payload
+
+  /* send the Cmd */
+  pilot_send_cmd(&cmd);
+
+  /* wait until the uid is updated or the timeout occurs */
+  if (WAIT_EVENT_INTERRUPTIBLE_TIMEOUT(_internals.modules[slot].status_is_updated_wq, _internals.modules[slot].status_is_updated != 0, (timeout * HZ / 1000)) <= 0)
+  {
+    timedout = 1;
+    LOG_INFO("pilot_try_get_module_status() timeout reached!");
+  }
+  else
+  {
+    *module_status = _internals.modules[slot].status;    
+    LOG_DEBUGALL("pilot_try_get_module_status() successful");
+  }
+
+  return timedout ? -1 : SUCCESS;
+}
+
+static int pilot_try_set_module_status(int timeout, module_slot_t slot, int module_status)
+{
+  pilot_cmd_t cmd;
+  int timedout = 0;
+
+  _internals.modules[slot].status_is_updated = 0;
+
+  /* setup the cmd */
+  memset(&cmd, 0, sizeof(pilot_cmd_t));
+  cmd.target = target_t_from_module_slot_and_port(slot, module_port_1);
+  cmd.type = pilot_cmd_type_module_status_set;
+
+  cmd.data[0] = (uint8_t)slot;
+  memcpy(cmd.data, (void *)&module_status, sizeof(module_status));
+  cmd.length = MSG_LEN(4); 
+
+  /* send the Cmd */
+  pilot_send_cmd(&cmd);
+
+  /* wait until the uid is updated or the timeout occurs */
+  if (WAIT_EVENT_INTERRUPTIBLE_TIMEOUT(_internals.modules[slot].status_is_updated_wq, _internals.modules[slot].status_is_updated != 0, (timeout * HZ / 1000)) <= 0)
+  {
+    timedout = 1;
+    LOG_INFO("pilot_try_get_uart_mode() timeout reached while waiting for fid!");
+  }
+  else
+  {
+    LOG_DEBUGALL("pilot_try_get_uart_mode() successful");
+  }
+
+  return timedout ? -1 : SUCCESS;
+}
+/************************
+* /proc/pilot/moduleX/state
+************************/
+
+static int pilot_proc_pilot_module_status_show(struct seq_file *file, void *data)
+{
+
+  /* get the slot */
+  module_slot_t module = (module_slot_t)file->private;
+
+  if (module < MODULES_COUNT)
+  {
+    if (pilot_try_get_module_status(100, module, &_internals.modules[module].status) == SUCCESS)
+    {
+      seq_printf(file, "%i\n", _internals.modules[module].status);
+      return 0;
+    }
+  }
+
+  return -EINVAL;
+}
+
+static ssize_t pilot_proc_pilot_module_status_write(struct file* file, const char __user *buf, size_t count, loff_t *off)
+{
+  int new_value, ret=-EINVAL;
+
+  /* get the slot */
+  module_slot_t module = (module_slot_t)PDE_DATA(file->f_inode);
+
+  if (module < MODULES_COUNT)
+  {
+    /* try to get an int value from the user */
+    if (kstrtoint_from_user(buf, count, 10, &new_value) != SUCCESS)
+      ret = -EINVAL; /* return an error if the conversion fails */
+    else
+    {
+      /* sanity check the value before setting the spiclk */
+      if (pilot_try_set_module_status(100, module, new_value) == SUCCESS)
+      {
+        _internals.modules[module].status = new_value;
+        ret = count;
+      }
+      else
+        ret = -EINVAL;
+    }
+  }
+  return ret;
+}
+
+static int pilot_proc_pilot_module_status_open(struct inode *inode, struct file *file)
+{
+  return single_open(file, pilot_proc_pilot_module_status_show, PDE_DATA(inode));
+}
+
+/* file operations for /proc/pilot/uartmode */
+static const struct file_operations proc_pilot_module_status_fops = {
+  .owner   = THIS_MODULE,
+  .open    = pilot_proc_pilot_module_status_open,
+  .read    = seq_read,
+  .llseek  = seq_lseek,
+  .release = single_release,
+  .write   = pilot_proc_pilot_module_status_write
+};
+
+
+/************************
+* /proc/pilot/uartmode
+************************/
+
+static int pilot_proc_pilot_uartmode_show(struct seq_file *file, void *data)
+{
+
+  if (pilot_try_get_uart_mode(100, &_internals.uartmode) == SUCCESS)
+  {
+    seq_printf(file, "%i\n", _internals.uartmode);
+    return 0;
+  }
+  else 
+    return -EINVAL;
+}
+
+static ssize_t pilot_proc_pilot_uartmode_write(struct file* file, const char __user *buf, size_t count, loff_t *off)
+{
+  int new_value, ret=-EINVAL;
+
+  /* try to get an int value from the user */
+  if (kstrtoint_from_user(buf, count, 10, &new_value) != SUCCESS)
+    ret = -EINVAL; /* return an error if the conversion fails */
+  else
+  {
+    /* sanity check the value before setting the spiclk */
+    if (pilot_try_set_uart_mode(100, new_value) == SUCCESS)
+    {
+      _internals.uartmode = new_value;
+      ret = count;
+    }
+    else
+      ret = -EINVAL;
+  }
+  return ret;
+}
+
+static int pilot_proc_pilot_uartmode_open(struct inode *inode, struct file *file)
+{
+  return single_open(file, pilot_proc_pilot_uartmode_show, NULL);
+}
+
+/* file operations for /proc/pilot/uartmode */
+static const struct file_operations proc_pilot_uart_mode_fops = {
+  .owner   = THIS_MODULE,
+  .open    = pilot_proc_pilot_uartmode_open,
+  .read    = seq_read,
+  .llseek  = seq_lseek,
+  .release = single_release,
+  .write   = pilot_proc_pilot_uartmode_write
+};
 /************************
 * /proc/pilot/spiclk
 ************************/
@@ -1797,9 +2088,10 @@ static int pilot_try_get_fwinfo(int timeout)
 
   /* send the request */
   memset(&cmd, 0, sizeof(pilot_cmd_t));
+  cmd.data[0] = 0;
   cmd.target = target_base;
   cmd.type = pilot_cmd_type_fwinfo;
-  cmd.length = 0; //no payload
+  cmd.length = MSG_LEN(1);
 
   pilot_send_cmd(&cmd);
 
@@ -1818,7 +2110,7 @@ static int pilot_proc_pilot_fwinfo_show(struct seq_file *file, void *data)
   int ret;
   if (pilot_try_get_fwinfo(1000) == SUCCESS)
   {
-    _internals.fwinfo[MODULE_FWINFO_LENGTH] = 0; //safety terminating char
+    _internals.fwinfo[MODULE_FWINFO_LENGTH-1] = 0; //safety terminating char
     seq_printf(file, "%s\n", _internals.fwinfo);
     ret = 0;
   }

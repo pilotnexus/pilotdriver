@@ -1,3 +1,18 @@
 {
-  "git.ignoreLimitWarning": true
+  "git.ignoreLimitWarning": true,
+  "files.associations": {
+    "cctype": "c",
+    "climits": "c",
+    "cmath": "c",
+    "cstdarg": "c",
+    "cstdio": "c",
+    "cstdlib": "c",
+    "type_traits": "c",
+    "limits": "c",
+    "*.tcc": "c",
+    "cinttypes": "c",
+    "cstdbool": "c",
+    "cstdint": "c",
+    "typeinfo": "c"
+  }
 }

@@ -15,8 +15,6 @@
 #define pilot_CMD_TYPE_RTC_SET "rtc set"
 #define pilot_CMD_TYPE_INPUT_GET_COUNTER "input get counter"
 #define pilot_CMD_TYPE_INPUT_SET_COUNTER "input set counter"
-#define pilot_CMD_TYPE_LORA_SET_ENABLE "lora set enable"
-#define pilot_CMD_TYPE_LORA_GET_ENABLE "lora get enable"
 #define pilot_CMD_TYPE_GPS_SET_ENABLE "gps set enable"
 #define pilot_CMD_TYPE_GPS_GET_ENABLE "gps get enable"
 #define pilot_CMD_TYPE_IO16_SET_DIRECTION "io16 set direction"
@@ -44,6 +42,17 @@
 #define pilot_CMD_TYPE_TEST_RUN "test run"
 #define pilot_CMD_TYPE_PLC_VARIABLE_GET "plc var get"
 #define pilot_CMD_TYPE_PLC_VARIABLE_SET "plc var set"
+#define pilot_CMD_TYPE_LORA_SET_ENABLE "LoRA set enable"
+#define pilot_CMD_TYPE_LORA_GET_ENABLE "LoRA get enable"
+#define pilot_CMD_TYPE_TEST_RUN "test run"
+#define pilot_CMD_TYPE_MODULE_STATUS_GET "Module status get"  
+#define pilot_CMD_TYPE_MODULE_STATUS_SET "Module status set"  
+#define pilot_CMD_TYPE_FPGA_STATE "fpga state"
+#define pilot_CMD_TYPE_FPGA_CMD "fpga cmd" 
+#define pilot_CMD_TYPE_COMM_STAT "comm stat"
+#define pilot_CMD_TYPE_FWINFO "fw info" 
+#define pilot_CMD_TYPE_UART_MODE_GET "UART mode get"
+#define pilot_CMD_TYPE_UART_MODE_SET "UART mode set"
 
 char* pilot_cmd_type_to_name(pilot_cmd_type_t type)
 {
@@ -55,8 +64,6 @@ char* pilot_cmd_type_to_name(pilot_cmd_type_t type)
     case pilot_cmd_type_eeprom_hid_set: return pilot_CMD_TYPE_HID_SET;
     case pilot_cmd_type_eeprom_fid_get: return pilot_CMD_TYPE_FID_GET;
     case pilot_cmd_type_eeprom_fid_set: return pilot_CMD_TYPE_FID_SET;
-    case pilot_cmd_type_lora_get_enable: return pilot_CMD_TYPE_LORA_GET_ENABLE;
-    case pilot_cmd_type_lora_set_enable: return pilot_CMD_TYPE_LORA_SET_ENABLE;
     case pilot_cmd_type_gps_get_enable: return pilot_CMD_TYPE_GPS_GET_ENABLE;
     case pilot_cmd_type_gps_set_enable: return pilot_CMD_TYPE_GPS_SET_ENABLE;
     case pilot_cmd_type_usart_set_baudrate: return pilot_CMD_TYPE_USART_SET_BAUDRATE;
@@ -86,14 +93,21 @@ char* pilot_cmd_type_to_name(pilot_cmd_type_t type)
     case pilot_cmd_type_plc_state_get: return pilot_CMD_TYPE_PLC_STATE_GET;
     case pilot_cmd_type_plc_state_set: return pilot_CMD_TYPE_PLC_STATE_SET;
     case pilot_cmd_type_plc_cycletimes_get: return pilot_CMD_TYPE_PLC_CYCLETIMES_GET;
-    case pilot_cmd_type_plc_variables_read_config: return pilot_CMD_TYPE_PLC_VARIABLES_READ_CONFIG;
-    case pilot_cmd_type_plc_variables_write_config: return pilot_CMD_TYPE_PLC_VARIABLES_WRITE_CONFIG;
-    case pilot_cmd_type_plc_variables_get: return pilot_CMD_TYPE_PLC_VARIABLES_GET;
-    case pilot_cmd_type_plc_variables_set: return pilot_CMD_TYPE_PLC_VARIABLES_SET;
+    case pilot_cmd_type_plc_read_var_config: return pilot_CMD_TYPE_PLC_VARIABLES_READ_CONFIG;
+    case pilot_cmd_type_plc_write_var_config: return pilot_CMD_TYPE_PLC_VARIABLES_WRITE_CONFIG;
+    case pilot_cmd_type_plc_variable_get: return pilot_CMD_TYPE_PLC_VARIABLES_GET;
+    case pilot_cmd_type_plc_variable_set: return pilot_CMD_TYPE_PLC_VARIABLES_SET;
+    case pilot_cmd_type_lora_set_enable: return pilot_CMD_TYPE_LORA_SET_ENABLE;
+    case pilot_cmd_type_lora_get_enable: return pilot_CMD_TYPE_LORA_GET_ENABLE;
     case pilot_cmd_type_test_run: return pilot_CMD_TYPE_TEST_RUN;
-    case pilot_cmd_type_plc_variable_get: return pilot_CMD_TYPE_PLC_VARIABLE_GET;
-    case pilot_cmd_type_plc_variable_set: return pilot_CMD_TYPE_PLC_VARIABLE_SET;
-
+    case pilot_cmd_type_module_status_get: return pilot_CMD_TYPE_MODULE_STATUS_GET; 
+    case pilot_cmd_type_module_status_set:  return pilot_CMD_TYPE_MODULE_STATUS_SET; 
+    case pilot_cmd_type_fpga_state: return pilot_CMD_TYPE_FPGA_STATE;
+    case pilot_cmd_type_fpga_cmd: return pilot_CMD_TYPE_FPGA_CMD;
+    case pilot_cmd_type_comm_stats_get: return pilot_CMD_TYPE_COMM_STAT;
+    case pilot_cmd_type_fwinfo: return pilot_CMD_TYPE_FWINFO;
+    case pilot_cmd_type_uart_mode_get: return pilot_CMD_TYPE_UART_MODE_GET;
+    case pilot_cmd_type_uart_mode_set: return pilot_CMD_TYPE_UART_MODE_SET;
     default: return pilot_CMD_TYPE_UNKNOWN;
   }
 }

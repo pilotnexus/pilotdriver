@@ -534,6 +534,7 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
     case pilot_cmd_type_fpga_cmd:
       pilot_fpga_handle_get_fpga_cmd(&cmd);    
       ret = pilot_cmd_handler_status_handled;
+      break;
     case pilot_cmd_type_fpga_state:
       pilot_fpga_handle_get_fpga_state_cmd(&cmd);
       ret = pilot_cmd_handler_status_handled;
