@@ -569,8 +569,8 @@ static unsigned int pilot_plc_proc_var_poll(struct file *filp, poll_table *wait)
 
   if (!kfifo_is_empty(&variable->fifo))
   {
-    LOG_DEBUG("pilot_plc_proc_var_poll() called, return POLLIN | POLLRDNORM (items in queue)\n");
-    events = POLLIN | POLLRDNORM; 
+    LOG_DEBUG("pilot_plc_proc_var_poll() called, return POLLIN | EPOLLPRI | POLLRDNORM (items in queue)\n");
+    events = POLLIN | EPOLLPRI | POLLRDNORM; 
   }
   else
     LOG_DEBUG("pilot_plc_proc_var_poll() called, return 0 (queue empty)\n");
@@ -603,23 +603,26 @@ loff_t pilot_plc_proc_var_llseek(struct file *filp, loff_t off, int whence)
   //LOG_DEBUG("llseek(), whence=%i, loff=%i %s\n", whence, (int)off, variable->variable);
 
   switch(whence) {
-    case 0: /* SEEK_SET */
-      //if (off == 0)
-      //{
-        newpos = 0;//off;
-        //LOG_DEBUG("llseek to 0 in variable file (current pos=%i) %s\n", (int)filp->f_pos, variable->variable);
-      //}
-      //else
-       // return -ESPIPE;
-      break;
-    default: /* can't happen */
-        return -ESPIPE;
+   case 0: /* SEEK_SET */
+    newpos = off;
+    break;
+
+   case 1: /* SEEK_CUR */
+    newpos = filp->f_pos + off;
+    break;
+
+   case 2: /* SEEK_END */
+    //newpos = dev->size + off;
+    //currently we cannot seek to the end
+    return -ESPIPE; /* unseekable */
+    break;
+
+   default: /* can't happen */
+    return -EINVAL;
   }
-
-    filp->f_pos = newpos;
-    return newpos;
-
-  return -ESPIPE; /* unseekable */
+  if (newpos<0) return -EINVAL;
+  filp->f_pos = newpos;
+  return newpos;
 }
 
 static int pilot_plc_proc_var_type_show(struct seq_file *file, void *data)
@@ -679,12 +682,16 @@ static int pilot_plc_try_set_variable_config(pilot_plc_variable_t * variable, ui
   unsigned long timestamp;
   msg_plc_var_config_t *data = (msg_plc_var_config_t *)cmd.data;
 
+  bool *is_updated;
+
   /* reset the is state updated flag */
   switch(config) {
-    case 1: variable->is_subscribed_updated = false; break;
-    case 2: variable->is_forced_updated = false; break;
+    case 1: is_updated = &variable->is_subscribed_updated; break;
+    case 2: is_updated = &variable->is_forced_updated; break;
     default: return -1; break;
   }
+
+  *is_updated = false;
 
   /* set the plc state get request */
   cmd.target = target_base;
@@ -699,7 +706,8 @@ static int pilot_plc_try_set_variable_config(pilot_plc_variable_t * variable, ui
   timestamp = jiffies + (timeout * HZ / 1000);
 
   /* wait until the state is updated or the timeout occurs */
-  while (_internals.is_state_updated == 0) 
+  while (*is_updated == 0) 
+
     if (time_after(jiffies, timestamp))
     {
       is_timedout = 1;
@@ -1348,12 +1356,56 @@ static ssize_t pilot_plc_proc_stream_read(struct file *filep, char __user *buf, 
 }
 
 
+static void pilot_set_module_status(module_slot_t slot, int module_status)
+{
+  pilot_cmd_t cmd;
+
+  /* setup the cmd */
+  memset(&cmd, 0, sizeof(pilot_cmd_t));
+  cmd.target = target_t_from_module_slot_and_port(slot, module_port_1);
+  cmd.type = pilot_cmd_type_module_status_set;
+
+  cmd.data[0] = (uint8_t)slot;
+  memcpy(cmd.data, (void *)&module_status, sizeof(module_status));
+  cmd.length = MSG_LEN(4); 
+
+  /* send the Cmd */
+  pilot_send_cmd(&cmd);
+}
 
 static ssize_t pilot_plc_proc_stream_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
   int ret = -EINVAL;
   //pilotevent_data
-  //if (count != sizeof(pilotevent_data))
+  if (count == sizeof(struct pilotevent_data)) 
+  {
+    pilot_plc_state_t value;
+    int module_status;
+    struct pilotevent_data pe;
+    ret = copy_to_user(&pe, buf, count);
+    switch (pe.cmd)
+    {
+      case 0x1: //write variable
+        if (pe.sub < _internals.variables_count)
+        {
+          LOG_DEBUG("stream write to variable %d received", pe.sub);
+          pilot_plc_send_set_variable_cmd(pe.sub, 0, pe.data, get_IEC_size(_internals.variables[pe.sub]->iectype));
+        }
+      break;
+      case 0x10: //write plc state
+        memcpy(&value, pe.data, sizeof(pilot_plc_state_t));
+        pilot_plc_send_set_state_cmd(value);
+      break;
+      case 0x11: //write module status
+        memcpy(&module_status, pe.data, sizeof(module_status));
+        pilot_set_module_status(pe.reserved, module_status);
+      break;
+    }
+
+  }
+  else {
+    LOG_DEBUG("stream write with wrong length. expected: %d, got %d", sizeof(struct pilotevent_data), count);
+  }
   return ret;
 }
 
@@ -1368,7 +1420,10 @@ static unsigned int pilot_plc_proc_stream_poll(struct file *filep, poll_table *w
 	poll_wait(filep, &_internals.event_state.wait, wait);
 
 	if (!kfifo_is_empty(&_internals.event_state.events))
-		events = EPOLLIN | EPOLLRDNORM;
+  {
+    LOG_DEBUG("pilot_stream poll Events set: EPOLLPRI | EPOLLIN | EPOLLRDNORM");
+		events = EPOLLPRI | EPOLLIN | EPOLLRDNORM;
+  }
 
 	return events;
 }
@@ -1382,18 +1437,29 @@ loff_t pilot_plc_proc_stream_llseek(struct file *filp, loff_t off, int whence)
 {
   loff_t newpos;
 
+  LOG_DEBUG("stream llseek(), whence=%i, loff=%i\n", whence, (int)off);
+
   switch(whence) {
-    case 0: /* SEEK_SET */
-        newpos = 0;//off;
-      break;
-    default: /* can't happen */
-        return -ESPIPE;
+   case 0: /* SEEK_SET */
+    newpos = off;
+    break;
+
+   case 1: /* SEEK_CUR */
+    newpos = filp->f_pos + off;
+    break;
+
+   case 2: /* SEEK_END */
+    //newpos = dev->size + off;
+    //currently we cannot seek to the end
+    return -ESPIPE; /* unseekable */
+    break;
+
+   default: /* can't happen */
+    return -EINVAL;
   }
-
-    filp->f_pos = newpos;
-    return newpos;
-
-  return -ESPIPE; /* unseekable */
+  if (newpos<0) return -EINVAL;
+  filp->f_pos = newpos;
+  return newpos;
 }
 
 static int pilot_plc_proc_stream_flush(struct file *file, fl_owner_t id)
@@ -1580,11 +1646,14 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
         {
           //queue event
           pe.cmd = 0x1; //get var event
-          pe.sub = v.subvalue;
+          pe.sub = v.number;
           memcpy(&pe.data, v.value, sizeof(pe.data));
+
+          LOG_DEBUG("received variable %d, subvalue %d: %02X %02X %02X %02X %02X %02X %02X %02X", v.number, v.subvalue,
+            v.value[0], v.value[1], v.value[2], v.value[3], v.value[4], v.value[5], v.value[6], v.value[7]   );
           if (kfifo_put(&_internals.event_state.events, pe) != 0)
           {
-		        wake_up_poll(&_internals.event_state.wait, EPOLLIN);
+		        wake_up_poll(&_internals.event_state.wait, EPOLLIN | EPOLLPRI);
           }
            //now send to variable specific fifo
           if (!mutex_lock_interruptible(&access_lock)) 
@@ -1594,7 +1663,7 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
 
             kfifo_in(&_internals.variables[v.number]->fifo,v.value, MSG_PLC_VAR_MAX_LEN);
             mutex_unlock(&access_lock);
-            wake_up_poll(&_internals.variables[v.number]->in_queue, POLLIN);
+            wake_up_poll(&_internals.variables[v.number]->in_queue, POLLIN | EPOLLPRI);
           }
         }
       }
@@ -1629,7 +1698,21 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
   break;
   case pilot_cmd_type_plc_write_var_config:
     c = (msg_plc_var_config_t *)&cmd.data;
-
+    if (c->number < _internals.variables_count) 
+    {
+      switch(c->config)
+      {
+        case 1: 
+          _internals.variables[c->number]->is_subscribed_updated = true;
+          break;
+        case 2: 
+          _internals.variables[c->number]->is_forced_updated = true;
+          break;
+        default:
+          //unknown command
+        break;
+      }
+    }
     ret = pilot_cmd_handler_status_handled;
   break;
 
@@ -1643,10 +1726,21 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
     memcpy(&pe.data, (void*)&_internals.state, sizeof(int));
     if (kfifo_put(&_internals.event_state.events, pe) != 0)
     {
-		  wake_up_poll(&_internals.event_state.wait, EPOLLIN);
+		  wake_up_poll(&_internals.event_state.wait, EPOLLIN | EPOLLPRI);
     }
 
     LOG_DEBUG("pilot_callback_cmd_received() received plc_state_get answer");
+    /* mark the command as handled */
+    ret = pilot_cmd_handler_status_handled;
+    break;
+  case pilot_cmd_type_module_status_get:
+    pe.cmd = 0x11;
+    pe.reserved = target_t_get_module_slot(cmd.target);
+    memcpy(&pe.data, (void*)cmd.data, sizeof(int));
+    if (kfifo_put(&_internals.event_state.events, pe) != 0)
+    {
+		  wake_up_poll(&_internals.event_state.wait, EPOLLIN | EPOLLPRI);
+    }
     /* mark the command as handled */
     ret = pilot_cmd_handler_status_handled;
     break;
