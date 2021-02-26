@@ -98,18 +98,19 @@ static int pilot_slcd_proc_buffer_open(struct inode *inode, struct file *file)
   return single_open(file, pilot_slcd_proc_buffer_show, PDE_DATA(inode));
 }
 
-static int pilot_slcd_proc_buffer_flush(struct file *file, fl_owner_t id)
-{
-  /* get the module slot */
-  module_slot_t slot = (int)PDE_DATA(file->f_inode);
-
-  LOG_DEBUG("called pilot_slcd_proc_buffer_flush()");
-
-  /* check if we need to send an update for it */
-  pilot_slcd_check_send_display_buffer(slot);
-
-  return 0;
-}
+//TODO - this is not supported any longer, don't know if pilot_slcd_check_send_display_buffer() is needed to be called
+//static int pilot_slcd_proc_buffer_flush(struct file *file, fl_owner_t id)
+//{
+//  /* get the module slot */
+//  module_slot_t slot = (int)PDE_DATA(file->f_inode);
+//
+//  LOG_DEBUG("called pilot_slcd_proc_buffer_flush()");
+//
+//  /* check if we need to send an update for it */
+//  pilot_slcd_check_send_display_buffer(slot);
+//
+//  return 0;
+//}
 
 static ssize_t pilot_slcd_proc_buffer_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
@@ -151,7 +152,7 @@ static const struct proc_ops proc_buffer_fops = {
   .proc_lseek  =seq_lseek,
   .proc_release = pilot_slcd_proc_buffer_release,
   .proc_write = pilot_slcd_proc_buffer_write,
-  .flush   = pilot_slcd_proc_buffer_flush
+  //.flush   = pilot_slcd_proc_buffer_flush
 };
 
 static const char pilot_slcd_proc_resolution_name[] = "resolution";

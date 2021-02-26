@@ -832,7 +832,7 @@ static const struct proc_ops proc_plc_variable_fops = {
   .proc_open = pilot_plc_proc_var_open,
   .proc_read = pilot_plc_proc_var_read,
   .proc_write = pilot_plc_proc_var_write,
-  .poll = pilot_plc_proc_var_poll,
+  .proc_poll = pilot_plc_proc_var_poll,
   .proc_lseek = pilot_plc_proc_var_llseek,
   .proc_release = pilot_plc_proc_var_release
 };
@@ -1462,19 +1462,13 @@ loff_t pilot_plc_proc_stream_llseek(struct file *filp, loff_t off, int whence)
   return newpos;
 }
 
-static int pilot_plc_proc_stream_flush(struct file *file, fl_owner_t id)
-{
-  return 0;
-}
-
 static const struct proc_ops proc_plc_stream_fops = {
   
   //.proc_open = pilot_plc_proc_stream_open,
   .proc_read = pilot_plc_proc_stream_read,
   .proc_write = pilot_plc_proc_stream_write,
-  .poll = pilot_plc_proc_stream_poll,
+  .proc_poll = pilot_plc_proc_stream_poll,
   .proc_lseek = pilot_plc_proc_stream_llseek,
-  .flush = pilot_plc_proc_stream_flush,
   //.proc_release = pilot_plc_proc_stream_release
 };
 
@@ -1751,9 +1745,9 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
     _internals.cycletimes.cur = UINT16_FROM_BYTES((cmd.data + (int)pilot_plc_cycletimes_index_cur));
     _internals.cycletimes.tick = UINT16_FROM_BYTES((cmd.data + (int)pilot_plc_cycletimes_index_tick));
     _internals.cycletimes.comm = UINT16_FROM_BYTES((cmd.data + (int)pilot_plc_cycletimes_index_comm));
-    _internals.cycletimes.proc_read = UINT16_FROM_BYTES((cmd.data + (int)pilot_plc_cycletimes_index_read));
+    _internals.cycletimes.read = UINT16_FROM_BYTES((cmd.data + (int)pilot_plc_cycletimes_index_read));
     _internals.cycletimes.program = UINT16_FROM_BYTES((cmd.data + (int)pilot_plc_cycletimes_index_program));
-    _internals.cycletimes.proc_write = UINT16_FROM_BYTES((cmd.data + (int)pilot_plc_cycletimes_index_write));
+    _internals.cycletimes.write = UINT16_FROM_BYTES((cmd.data + (int)pilot_plc_cycletimes_index_write));
 
     mb();
     _internals.is_cycletimes_updated = true;

@@ -121,7 +121,7 @@ static struct platform_device pilot_rtc_device = {
   .name = "pilotrtc", /* using the same name as the platform driver */
   .id = 0,
   .dev = {
-    .proc_release = pilot_rtc_device_release
+    .release = pilot_rtc_device_release
   }
 };
 

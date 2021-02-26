@@ -21,7 +21,7 @@ help:
 local:
 	@echo "BUILDING TTY DRIVER"
 	cp $(BASE_DRV_SRC)/Module.symvers $(PWD)
-	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules KBUILD_EXTMOD=`pwd`/../driver
+	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules KBUILD_EXTRA_SYMBOLS=`pwd`/../driver/Module.symvers
 
 xc: $(addprefix xc_,$(KERNEL_VER_LIST))
 

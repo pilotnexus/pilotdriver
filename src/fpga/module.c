@@ -219,17 +219,6 @@ static int pilot_fpga_proc_bitstream_open(struct inode *inode, struct file *file
   return 0;
 }
 
-static int pilot_fpga_proc_bitstream_flush(struct file *file, fl_owner_t id)
-{
-  /* get the module slot */
-  #ifdef DEBUG
-  module_slot_t slot = (int)PDE_DATA(file->f_inode);
-  LOG_DEBUG("called pilot_fpga_proc_bitstream_flush() for slot %i", (int)slot);
-  #endif
-
-  return 0;
-}
-
 static ssize_t pilot_fpga_proc_bitstream_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
   int addr = 0, blocksize, bytes_written = 0;
@@ -302,7 +291,6 @@ static const struct proc_ops proc_bitstream_fops = {
   .proc_lseek  =seq_lseek,
   .proc_release = pilot_fpga_proc_bitstream_release,
   .proc_write = pilot_fpga_proc_bitstream_write,
-  .flush   = pilot_fpga_proc_bitstream_flush
 };
 
 // *******************************************************************
