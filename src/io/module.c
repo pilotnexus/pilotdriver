@@ -87,7 +87,7 @@ static char gpio_chip_labels[MODULES_COUNT][MAX_LABEL_LENGTH];
 /* internal variables */
 static internals_t _internals = { 
   .driverId = -1, 
-  .gpio_base=  55, /* default to the first gpio number that is not within the default ngpio range on the rpi */
+  .gpio_base=  60, /* default to the first gpio number that is not within the default ngpio range on the rpi */
   .gpio_max = 255, /* some sane default, see include/asm-generic/gpio.h */
   .gpio_modules = { { module_slot_1 }, { module_slot_2 }, { module_slot_3 }, { module_slot_4 } },
   .answer_timeout = 100
