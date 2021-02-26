@@ -89,7 +89,7 @@ static internals_t _internals = {
   .answer_timeout = 300
 };
 
-static const struct file_operations proc_pilot_module_enable_lora_fops,
+static const struct proc_ops proc_pilot_module_enable_lora_fops,
 									                  proc_pilot_module_enable_gps_fops,
                                     proc_pilot_module_enable_onewire_fops,
                                     proc_pilot_module_enable_gsm_fops;
@@ -712,13 +712,13 @@ static int pilot_tty_proc_pilot_module_enable_lora_open(struct inode *inode, str
 	return single_open(file, pilot_tty_proc_pilot_module_enable_lora_show, PDE_DATA(inode));
 }
 
-static const struct file_operations proc_pilot_module_enable_lora_fops = {
-	.owner = THIS_MODULE,
-	.open = pilot_tty_proc_pilot_module_enable_lora_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.release = single_release,
-	.write = pilot_tty_proc_pilot_module_enable_lora_write
+static const struct proc_ops proc_pilot_module_enable_lora_fops = {
+	
+	.proc_open = pilot_tty_proc_pilot_module_enable_lora_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_release = single_release,
+	.proc_write = pilot_tty_proc_pilot_module_enable_lora_write
 };
 
 
@@ -761,13 +761,13 @@ static int pilot_tty_proc_pilot_module_enable_gps_open(struct inode *inode, stru
   return single_open(file, pilot_tty_proc_pilot_module_enable_gps_show, PDE_DATA(inode));
 }
 
-static const struct file_operations proc_pilot_module_enable_gps_fops = {
-  .owner   = THIS_MODULE,
-  .open    = pilot_tty_proc_pilot_module_enable_gps_open,
-  .read    = seq_read,
-  .llseek  = seq_lseek,
-  .release = single_release,
-  .write   = pilot_tty_proc_pilot_module_enable_gps_write
+static const struct proc_ops proc_pilot_module_enable_gps_fops = {
+  
+  .proc_open =pilot_tty_proc_pilot_module_enable_gps_open,
+  .proc_read = seq_read,
+  .proc_lseek  =seq_lseek,
+  .proc_release = single_release,
+  .proc_write = pilot_tty_proc_pilot_module_enable_gps_write
 };
 
 /* enable_gsm file operations */
@@ -809,13 +809,13 @@ static int pilot_tty_proc_pilot_module_enable_gsm_open(struct inode *inode, stru
   return single_open(file, pilot_tty_proc_pilot_module_enable_gsm_show, PDE_DATA(inode));
 }
 
-static const struct file_operations proc_pilot_module_enable_gsm_fops = {
-  .owner   = THIS_MODULE,
-  .open    = pilot_tty_proc_pilot_module_enable_gsm_open,
-  .read    = seq_read,
-  .llseek  = seq_lseek,
-  .release = single_release,
-  .write   = pilot_tty_proc_pilot_module_enable_gsm_write
+static const struct proc_ops proc_pilot_module_enable_gsm_fops = {
+  
+  .proc_open =pilot_tty_proc_pilot_module_enable_gsm_open,
+  .proc_read = seq_read,
+  .proc_lseek  =seq_lseek,
+  .proc_release = single_release,
+  .proc_write = pilot_tty_proc_pilot_module_enable_gsm_write
 };
 
 /* enable_onewire file operations */
@@ -854,11 +854,11 @@ static int pilot_tty_proc_pilot_module_enable_onewire_open(struct inode *inode, 
   return single_open(file, pilot_tty_proc_pilot_module_enable_onewire_show, PDE_DATA(inode));
 }
 
-static const struct file_operations proc_pilot_module_enable_onewire_fops = {
-  .owner   = THIS_MODULE,
-  .open    = pilot_tty_proc_pilot_module_enable_onewire_open,
-  .read    = seq_read,
-  .llseek  = seq_lseek,
-  .release = single_release,
-  .write   = pilot_tty_proc_pilot_module_enable_onewire_write
+static const struct proc_ops proc_pilot_module_enable_onewire_fops = {
+  
+  .proc_open =pilot_tty_proc_pilot_module_enable_onewire_open,
+  .proc_read = seq_read,
+  .proc_lseek  =seq_lseek,
+  .proc_release = single_release,
+  .proc_write = pilot_tty_proc_pilot_module_enable_onewire_write
 };

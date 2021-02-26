@@ -11,10 +11,10 @@ struct internals_t {
 
 /* holds all internal state */
 static struct internals_t _internals = { };
-static void pilot_io_irq_tasklet_handler(unsigned long unused);
-static DECLARE_TASKLET(pilot_io_irq_tasklet, pilot_io_irq_tasklet_handler, 0);
+static void pilot_io_irq_tasklet_handler(struct tasklet_struct *unused);
+static DECLARE_TASKLET(pilot_io_irq_tasklet, pilot_io_irq_tasklet_handler);
 
-static void pilot_io_irq_tasklet_handler(unsigned long unused)
+static void pilot_io_irq_tasklet_handler(struct tasklet_struct *unused)
 {
   int i;
   struct gpio_chip *gpio_chip = _internals.gpio_chip_irq;

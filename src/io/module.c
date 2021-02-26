@@ -98,7 +98,7 @@ static pilot_cmd_handler_t pilot_cmd_handler = {
   .callback_cmd_received = pilot_io_callback_cmd_received
 };
 
-static const struct file_operations proc_pilot_io_gpio_base_fops,
+static const struct proc_ops proc_pilot_io_gpio_base_fops,
                                     proc_pilot_io_gpio_max_fops,
                                     proc_pilot_module_counter_fops,
                                     proc_pilot_module_ai8_fops,
@@ -1160,12 +1160,12 @@ static ssize_t pilot_io_proc_pilot_io_gpio_base_write(struct file* file, const c
   return ret;
 }
 
-static const struct file_operations proc_pilot_io_gpio_base_fops = {
-  .open = pilot_io_proc_pilot_io_gpio_base_open,
-  .llseek = seq_lseek,
-  .read = seq_read,
-  .release = single_release,
-  .write = pilot_io_proc_pilot_io_gpio_base_write
+static const struct proc_ops proc_pilot_io_gpio_base_fops = {
+  .proc_open = pilot_io_proc_pilot_io_gpio_base_open,
+  .proc_lseek = seq_lseek,
+  .proc_read = seq_read,
+  .proc_release = single_release,
+  .proc_write = pilot_io_proc_pilot_io_gpio_base_write
 };
 
 /* max gpio specific  */
@@ -1181,11 +1181,11 @@ static int pilot_io_proc_pilot_io_gpio_max_open(struct inode *inode, struct file
   return single_open(file, pilot_io_proc_pilot_io_gpio_max_show, NULL);
 }
 
-static const struct file_operations proc_pilot_io_gpio_max_fops = {
-  .open = pilot_io_proc_pilot_io_gpio_max_open,
-  .read = seq_read,
-  .llseek = seq_lseek,
-  .release = single_release
+static const struct proc_ops proc_pilot_io_gpio_max_fops = {
+  .proc_open = pilot_io_proc_pilot_io_gpio_max_open,
+  .proc_read = seq_read,
+  .proc_lseek = seq_lseek,
+  .proc_release = single_release
 };
 
 /* max gpio specific */
@@ -1218,12 +1218,12 @@ static int pilot_io_proc_pilot_module_counter_open(struct inode *inode, struct f
   return single_open(file, pilot_io_proc_pilot_module_counter_show, PDE_DATA(inode));
 }
 
-static const struct file_operations proc_pilot_module_counter_fops = {
-  .open = pilot_io_proc_pilot_module_counter_open,
-  .llseek = seq_lseek,
-  .read = seq_read,
-  .release = single_release,
-  .write = pilot_io_proc_pilot_module_counter_write
+static const struct proc_ops proc_pilot_module_counter_fops = {
+  .proc_open = pilot_io_proc_pilot_module_counter_open,
+  .proc_lseek = seq_lseek,
+  .proc_read = seq_read,
+  .proc_release = single_release,
+  .proc_write = pilot_io_proc_pilot_module_counter_write
 };
 
 static int pilot_io_proc_pilot_module_ai8_show(struct seq_file *file, void *data)
@@ -1258,11 +1258,11 @@ static int pilot_io_proc_pilot_module_ai8_open(struct inode *inode, struct file 
   return single_open(file, pilot_io_proc_pilot_module_ai8_show, PDE_DATA(inode));
 }
 
-static const struct file_operations proc_pilot_module_ai8_fops = {
-  .open = pilot_io_proc_pilot_module_ai8_open,
-  .llseek = seq_lseek,
-  .read = seq_read,
-  .release = single_release
+static const struct proc_ops proc_pilot_module_ai8_fops = {
+  .proc_open = pilot_io_proc_pilot_module_ai8_open,
+  .proc_lseek = seq_lseek,
+  .proc_read = seq_read,
+  .proc_release = single_release
 };
 
 static int pilot_io_proc_pilot_module_aio20_show(struct seq_file *file, void *data)
@@ -1313,12 +1313,12 @@ static int pilot_io_proc_pilot_module_aio20_open(struct inode *inode, struct fil
   return single_open(file, pilot_io_proc_pilot_module_aio20_show, PDE_DATA(inode));
 }
 
-static const struct file_operations proc_pilot_module_aio20_fops = {
-  .open = pilot_io_proc_pilot_module_aio20_open,
-  .llseek = seq_lseek,
-  .read = seq_read,
-  .write = pilot_io_proc_pilot_module_aio20_write,
-  .release = single_release
+static const struct proc_ops proc_pilot_module_aio20_fops = {
+  .proc_open = pilot_io_proc_pilot_module_aio20_open,
+  .proc_lseek = seq_lseek,
+  .proc_read = seq_read,
+  .proc_write = pilot_io_proc_pilot_module_aio20_write,
+  .proc_release = single_release
 };
 
 

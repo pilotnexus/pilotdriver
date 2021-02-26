@@ -144,13 +144,13 @@ static int pilot_slcd_proc_buffer_release(struct inode *inode, struct file *file
 }
 
 /* file operations for /proc/pilot/moduleX/buffer */
-static const struct file_operations proc_buffer_fops = {
-  .owner   = THIS_MODULE,
-  .open    = pilot_slcd_proc_buffer_open,
-  .read    = seq_read,
-  .llseek  = seq_lseek,
-  .release = pilot_slcd_proc_buffer_release,
-  .write   = pilot_slcd_proc_buffer_write,
+static const struct proc_ops proc_buffer_fops = {
+  
+  .proc_open =pilot_slcd_proc_buffer_open,
+  .proc_read = seq_read,
+  .proc_lseek  =seq_lseek,
+  .proc_release = pilot_slcd_proc_buffer_release,
+  .proc_write = pilot_slcd_proc_buffer_write,
   .flush   = pilot_slcd_proc_buffer_flush
 };
 
@@ -290,13 +290,13 @@ static ssize_t pilot_slcd_proc_resolution_write(struct file *file, const char __
   return ret;
 }
 
-static const struct file_operations proc_resolution_fops = {
-  .owner   = THIS_MODULE,
-  .open    = pilot_slcd_proc_resolution_open,
-  .read    = seq_read,
-  .llseek  = seq_lseek,
-  .release = single_release,
-  .write   = pilot_slcd_proc_resolution_write
+static const struct proc_ops proc_resolution_fops = {
+  
+  .proc_open =pilot_slcd_proc_resolution_open,
+  .proc_read = seq_read,
+  .proc_lseek  =seq_lseek,
+  .proc_release = single_release,
+  .proc_write = pilot_slcd_proc_resolution_write
 };
 
 static const char pilot_slcd_proc_bitmap_name[] = "bitmap";
@@ -354,13 +354,13 @@ static int pilot_slcd_proc_bitmap_release(struct inode *inode, struct file *file
   return single_release(inode, file);
 }
 
-static const struct file_operations proc_bitmap_fops = {
-  .owner   = THIS_MODULE,
-  .open    = pilot_slcd_proc_bitmap_open,
-  .read    = seq_read,
-  .llseek  = seq_lseek,
-  .release = pilot_slcd_proc_bitmap_release,
-  .write   = pilot_slcd_proc_bitmap_write
+static const struct proc_ops proc_bitmap_fops = {
+  
+  .proc_open =pilot_slcd_proc_bitmap_open,
+  .proc_read = seq_read,
+  .proc_lseek  =seq_lseek,
+  .proc_release = pilot_slcd_proc_bitmap_release,
+  .proc_write = pilot_slcd_proc_bitmap_write
 };
 
 

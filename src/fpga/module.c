@@ -294,14 +294,14 @@ static int pilot_fpga_proc_bitstream_release(struct inode *inode, struct file *f
 }
 
 /* file operations for /proc/pilot/moduleX/bitstream */
-static const struct file_operations proc_bitstream_fops = {
-  .owner   = THIS_MODULE,
-  .open    = pilot_fpga_proc_bitstream_open,
-  //.read    = seq_read,
-  .read    = pilot_fpga_proc_bitstream_read,
-  .llseek  = seq_lseek,
-  .release = pilot_fpga_proc_bitstream_release,
-  .write   = pilot_fpga_proc_bitstream_write,
+static const struct proc_ops proc_bitstream_fops = {
+  
+  .proc_open =pilot_fpga_proc_bitstream_open,
+  //.proc_read = seq_read,
+  .proc_read = pilot_fpga_proc_bitstream_read,
+  .proc_lseek  =seq_lseek,
+  .proc_release = pilot_fpga_proc_bitstream_release,
+  .proc_write = pilot_fpga_proc_bitstream_write,
   .flush   = pilot_fpga_proc_bitstream_flush
 };
 
@@ -342,12 +342,12 @@ static int pilot_fpga_proc_cmd_open(struct inode *inode, struct file *file)
   return single_open(file, pilot_fpga_proc_cmd_show, PDE_DATA(inode));
 }
 
-static const struct file_operations proc_cmd_fops = {
-  .owner   = THIS_MODULE,
-  .open    = pilot_fpga_proc_cmd_open,
-  .read    = seq_read,
-  .write   = pilot_fpga_proc_cmd_write,
-  .release = single_release,
+static const struct proc_ops proc_cmd_fops = {
+  
+  .proc_open =pilot_fpga_proc_cmd_open,
+  .proc_read = seq_read,
+  .proc_write = pilot_fpga_proc_cmd_write,
+  .proc_release = single_release,
 };
 
 // *******************************************************************
@@ -385,11 +385,11 @@ static int pilot_fpga_proc_done_open(struct inode *inode, struct file *file)
   return single_open(file, pilot_fpga_proc_done_show, PDE_DATA(inode));
 }
 
-static const struct file_operations proc_done_fops = {
-  .owner   = THIS_MODULE,
-  .open    = pilot_fpga_proc_done_open,
-  .read    = seq_read,
-  .release = single_release,
+static const struct proc_ops proc_done_fops = {
+  
+  .proc_open =pilot_fpga_proc_done_open,
+  .proc_read = seq_read,
+  .proc_release = single_release,
 };
 
 // *******************************************************************
@@ -427,11 +427,11 @@ static int pilot_fpga_proc_flash_id_open(struct inode *inode, struct file *file)
   return single_open(file, pilot_fpga_proc_flash_id_show, PDE_DATA(inode));
 }
 
-static const struct file_operations proc_flash_id_fops = {
-  .owner   = THIS_MODULE,
-  .open    = pilot_fpga_proc_flash_id_open,
-  .read    = seq_read,
-  .release = single_release,
+static const struct proc_ops proc_flash_id_fops = {
+  
+  .proc_open =pilot_fpga_proc_flash_id_open,
+  .proc_read = seq_read,
+  .proc_release = single_release,
 };
 
 // *******************************************************************

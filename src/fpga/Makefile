@@ -18,16 +18,10 @@ help:
 	
 # -------------------------------------------------------------------------------------------
 
-
-
 local:
 	@echo "BUILDING FPGA DRIVER"
 	cp $(BASE_DRV_SRC)/Module.symvers $(PWD)
-	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules 
-
-
-
-
+	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules KBUILD_EXTMOD=`pwd`/../driver
 
 xc: $(addprefix xc_,$(KERNEL_VER_LIST))
 

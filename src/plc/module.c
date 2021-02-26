@@ -827,48 +827,48 @@ static int pilot_plc_proc_var_force_value_open(struct inode *inode, struct file 
 }
 
 /* file operations for the /proc/pilot/plc/vars/..../value */
-static const struct file_operations proc_plc_variable_fops = {
-  .owner = THIS_MODULE,
-  .open = pilot_plc_proc_var_open,
-  .read = pilot_plc_proc_var_read,
-  .write = pilot_plc_proc_var_write,
+static const struct proc_ops proc_plc_variable_fops = {
+  
+  .proc_open = pilot_plc_proc_var_open,
+  .proc_read = pilot_plc_proc_var_read,
+  .proc_write = pilot_plc_proc_var_write,
   .poll = pilot_plc_proc_var_poll,
-  .llseek = pilot_plc_proc_var_llseek,
-  .release = pilot_plc_proc_var_release
+  .proc_lseek = pilot_plc_proc_var_llseek,
+  .proc_release = pilot_plc_proc_var_release
 };
 
-static const struct file_operations proc_plc_variable_type_fops = {
-  .owner = THIS_MODULE,
-  .open = pilot_plc_proc_var_type_open,
-  .read = seq_read,
-  .release = single_release
+static const struct proc_ops proc_plc_variable_type_fops = {
+  
+  .proc_open = pilot_plc_proc_var_type_open,
+  .proc_read = seq_read,
+  .proc_release = single_release
 };
 
-static const struct file_operations proc_plc_variable_subscribed_fops = {
-  .owner = THIS_MODULE,
-  .open = pilot_plc_proc_var_subscribed_open,
-  .read = seq_read,
-  .write = pilot_plc_proc_var_subscribed_write,
-  .llseek = seq_lseek,
-  .release = single_release
+static const struct proc_ops proc_plc_variable_subscribed_fops = {
+  
+  .proc_open = pilot_plc_proc_var_subscribed_open,
+  .proc_read = seq_read,
+  .proc_write = pilot_plc_proc_var_subscribed_write,
+  .proc_lseek = seq_lseek,
+  .proc_release = single_release
 };
 
-static const struct file_operations proc_plc_variable_forced_fops = {
-  .owner = THIS_MODULE,
-  .open = pilot_plc_proc_var_forced_open,
-  .read = seq_read,
-  .write = pilot_plc_proc_var_forced_write,
-  .llseek = seq_lseek,
-  .release = single_release
+static const struct proc_ops proc_plc_variable_forced_fops = {
+  
+  .proc_open = pilot_plc_proc_var_forced_open,
+  .proc_read = seq_read,
+  .proc_write = pilot_plc_proc_var_forced_write,
+  .proc_lseek = seq_lseek,
+  .proc_release = single_release
 };
 
-static const struct file_operations proc_plc_variable_force_value_fops = {
-  .owner = THIS_MODULE,
-  .open = pilot_plc_proc_var_force_value_open,
-  .read = seq_read,
-  .write = pilot_plc_proc_var_force_value_write,
-  .llseek = seq_lseek,
-  .release = single_release
+static const struct proc_ops proc_plc_variable_force_value_fops = {
+  
+  .proc_open = pilot_plc_proc_var_force_value_open,
+  .proc_read = seq_read,
+  .proc_write = pilot_plc_proc_var_force_value_write,
+  .proc_lseek = seq_lseek,
+  .proc_release = single_release
 };
 
 void remove_path_recursive(pilot_plc_vardir_t *start) {
@@ -1140,13 +1140,13 @@ static ssize_t pilot_plc_proc_state_write(struct file *file, const char __user *
 }
 
 /* file operations for the /proc/pilot/plc/state */
-static const struct file_operations proc_plc_state_fops = {
-  .owner = THIS_MODULE,
-  .open = pilot_plc_proc_state_open,
-  .read = seq_read,
-  .write = pilot_plc_proc_state_write,
-  .llseek = seq_lseek,
-  .release = single_release
+static const struct proc_ops proc_plc_state_fops = {
+  
+  .proc_open = pilot_plc_proc_state_open,
+  .proc_read = seq_read,
+  .proc_write = pilot_plc_proc_state_write,
+  .proc_lseek = seq_lseek,
+  .proc_release = single_release
 };
 
 static int pilot_plc_proc_variables_state_show(struct seq_file *file, void *data)
@@ -1206,13 +1206,13 @@ static ssize_t pilot_plc_proc_variables_state_write(struct file *file, const cha
 }
 
 /* file operations for the /proc/pilot/plc/vars/variables */
-static const struct file_operations proc_plc_variables_fops = {
-  .owner = THIS_MODULE,
-  .open = pilot_plc_proc_variables_state_open,
-  .read = seq_read,
-  .write = pilot_plc_proc_variables_state_write,
-  .llseek = seq_lseek,
-  .release = single_release
+static const struct proc_ops proc_plc_variables_fops = {
+  
+  .proc_open = pilot_plc_proc_variables_state_open,
+  .proc_read = seq_read,
+  .proc_write = pilot_plc_proc_variables_state_write,
+  .proc_lseek = seq_lseek,
+  .proc_release = single_release
 };
 
 // END state
@@ -1291,11 +1291,11 @@ static int pilot_plc_proc_cycletimes_open(struct inode *inode, struct file *file
 }
 
 /* file operations for /proc/pilot/plc/cycletimes */
-static const struct file_operations proc_plc_cycletimes_fops = {
-  .owner = THIS_MODULE,
-  .open = pilot_plc_proc_cycletimes_open,
-  .read = seq_read,
-  .release = single_release
+static const struct proc_ops proc_plc_cycletimes_fops = {
+  
+  .proc_open = pilot_plc_proc_cycletimes_open,
+  .proc_read = seq_read,
+  .proc_release = single_release
 };
 
 // END cycletimes
@@ -1467,15 +1467,15 @@ static int pilot_plc_proc_stream_flush(struct file *file, fl_owner_t id)
   return 0;
 }
 
-static const struct file_operations proc_plc_stream_fops = {
-  .owner = THIS_MODULE,
-  //.open = pilot_plc_proc_stream_open,
-  .read = pilot_plc_proc_stream_read,
-  .write = pilot_plc_proc_stream_write,
+static const struct proc_ops proc_plc_stream_fops = {
+  
+  //.proc_open = pilot_plc_proc_stream_open,
+  .proc_read = pilot_plc_proc_stream_read,
+  .proc_write = pilot_plc_proc_stream_write,
   .poll = pilot_plc_proc_stream_poll,
-  .llseek = pilot_plc_proc_stream_llseek,
+  .proc_lseek = pilot_plc_proc_stream_llseek,
   .flush = pilot_plc_proc_stream_flush,
-  //.release = pilot_plc_proc_stream_release
+  //.proc_release = pilot_plc_proc_stream_release
 };
 
 // END variable stream config
@@ -1534,12 +1534,12 @@ static int pilot_proc_plc_fwinfo_open(struct inode *inode, struct file *file)
   return single_open(file, pilot_proc_plc_fwinfo_show, NULL);
 }
 
-static const struct file_operations proc_plc_fwinfo_fops = {
-  .owner   = THIS_MODULE,
-  .open    = pilot_proc_plc_fwinfo_open,
-  .read    = seq_read,
-  .llseek  = seq_lseek,
-  .release = single_release
+static const struct proc_ops proc_plc_fwinfo_fops = {
+  
+  .proc_open =pilot_proc_plc_fwinfo_open,
+  .proc_read = seq_read,
+  .proc_lseek  =seq_lseek,
+  .proc_release = single_release
 };
 
 /* register the /proc/pilot/plc/... files */
@@ -1751,9 +1751,9 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
     _internals.cycletimes.cur = UINT16_FROM_BYTES((cmd.data + (int)pilot_plc_cycletimes_index_cur));
     _internals.cycletimes.tick = UINT16_FROM_BYTES((cmd.data + (int)pilot_plc_cycletimes_index_tick));
     _internals.cycletimes.comm = UINT16_FROM_BYTES((cmd.data + (int)pilot_plc_cycletimes_index_comm));
-    _internals.cycletimes.read = UINT16_FROM_BYTES((cmd.data + (int)pilot_plc_cycletimes_index_read));
+    _internals.cycletimes.proc_read = UINT16_FROM_BYTES((cmd.data + (int)pilot_plc_cycletimes_index_read));
     _internals.cycletimes.program = UINT16_FROM_BYTES((cmd.data + (int)pilot_plc_cycletimes_index_program));
-    _internals.cycletimes.write = UINT16_FROM_BYTES((cmd.data + (int)pilot_plc_cycletimes_index_write));
+    _internals.cycletimes.proc_write = UINT16_FROM_BYTES((cmd.data + (int)pilot_plc_cycletimes_index_write));
 
     mb();
     _internals.is_cycletimes_updated = true;

@@ -140,7 +140,7 @@ static uint crc(const char *data, int len)
 }
 
 /* declare the file operations for the /proc/pilot/ files - the initialization is done after after the necessary functions are defined */
-static const struct file_operations proc_pilot_spiclk_fops,
+static const struct proc_ops proc_pilot_spiclk_fops,
                                     proc_pilot_reset_fops,
                                     // proc_pilot_firmware_fops,
                                     proc_pilot_stats_fops,
@@ -1622,13 +1622,13 @@ static int pilot_proc_pilot_module_status_open(struct inode *inode, struct file 
 }
 
 /* file operations for /proc/pilot/uartmode */
-static const struct file_operations proc_pilot_module_status_fops = {
-  .owner   = THIS_MODULE,
-  .open    = pilot_proc_pilot_module_status_open,
-  .read    = seq_read,
-  .llseek  = seq_lseek,
-  .release = single_release,
-  .write   = pilot_proc_pilot_module_status_write
+static const struct proc_ops proc_pilot_module_status_fops = {
+  
+  .proc_open =pilot_proc_pilot_module_status_open,
+  .proc_read = seq_read,
+  .proc_lseek  =seq_lseek,
+  .proc_release = single_release,
+  .proc_write = pilot_proc_pilot_module_status_write
 };
 
 
@@ -1675,13 +1675,13 @@ static int pilot_proc_pilot_uartmode_open(struct inode *inode, struct file *file
 }
 
 /* file operations for /proc/pilot/uartmode */
-static const struct file_operations proc_pilot_uart_mode_fops = {
-  .owner   = THIS_MODULE,
-  .open    = pilot_proc_pilot_uartmode_open,
-  .read    = seq_read,
-  .llseek  = seq_lseek,
-  .release = single_release,
-  .write   = pilot_proc_pilot_uartmode_write
+static const struct proc_ops proc_pilot_uart_mode_fops = {
+  
+  .proc_open =pilot_proc_pilot_uartmode_open,
+  .proc_read = seq_read,
+  .proc_lseek  =seq_lseek,
+  .proc_release = single_release,
+  .proc_write = pilot_proc_pilot_uartmode_write
 };
 /************************
 * /proc/pilot/spiclk
@@ -1723,13 +1723,12 @@ static int pilot_proc_pilot_spiclk_open(struct inode *inode, struct file *file)
 }
 
 /* file operations for /proc/pilot/spiclk */
-static const struct file_operations proc_pilot_spiclk_fops = {
-  .owner   = THIS_MODULE,
-  .open    = pilot_proc_pilot_spiclk_open,
-  .read    = seq_read,
-  .llseek  = seq_lseek,
-  .release = single_release,
-  .write   = pilot_proc_pilot_spiclk_write
+static const struct proc_ops proc_pilot_spiclk_fops = {
+  .proc_open =pilot_proc_pilot_spiclk_open,
+  .proc_read = seq_read,
+  .proc_lseek  =seq_lseek,
+  .proc_release = single_release,
+  .proc_write = pilot_proc_pilot_spiclk_write
 };
 
 /************************
@@ -1767,13 +1766,13 @@ static int pilot_proc_pilot_reset_open(struct inode *inode, struct file *file)
 }
 
 // file operations for /proc/pilot/reset
-static const struct file_operations proc_pilot_reset_fops = {
-  .owner   = THIS_MODULE,
-  .open    = pilot_proc_pilot_reset_open,
-  .read    = seq_read,
-  .llseek  = seq_lseek,
-  .release = single_release,
-  .write   = pilot_proc_pilot_reset_write
+static const struct proc_ops proc_pilot_reset_fops = {
+  
+  .proc_open =pilot_proc_pilot_reset_open,
+  .proc_read = seq_read,
+  .proc_lseek  =seq_lseek,
+  .proc_release = single_release,
+  .proc_write = pilot_proc_pilot_reset_write
 };
 */
 
@@ -1835,13 +1834,13 @@ static int pilot_proc_pilot_firmware_open(struct inode *inode, struct file *file
 }
 
 // file operations for /proc/pilot/firmware
-static const struct file_operations proc_pilot_firmware_fops = {
-  .owner   = THIS_MODULE,
-  .open    = pilot_proc_pilot_firmware_open,
-  .read    = seq_read,
-  .llseek  = seq_lseek,
-  .release = single_release,
-  .write   = pilot_proc_pilot_firmware_write
+static const struct proc_ops proc_pilot_firmware_fops = {
+  
+  .proc_open =pilot_proc_pilot_firmware_open,
+  .proc_read = seq_read,
+  .proc_lseek  =seq_lseek,
+  .proc_release = single_release,
+  .proc_write = pilot_proc_pilot_firmware_write
 };
 
 */
@@ -1889,13 +1888,13 @@ static int pilot_proc_pilot_stats_open(struct inode *inode, struct file *file)
 }
 
 /* file operations for /proc/pilot/stats */
-static const struct file_operations proc_pilot_stats_fops = {
-  .owner   = THIS_MODULE,
-  .open    = pilot_proc_pilot_stats_open,
-  .read    = seq_read,
-  .llseek  = seq_lseek,
-  .release = single_release,
-  .write   = pilot_proc_pilot_stats_write
+static const struct proc_ops proc_pilot_stats_fops = {
+  
+  .proc_open =pilot_proc_pilot_stats_open,
+  .proc_read = seq_read,
+  .proc_lseek  =seq_lseek,
+  .proc_release = single_release,
+  .proc_write = pilot_proc_pilot_stats_write
 };
 
 static int pilot_proc_pilot_last_recv_cmd_show(struct seq_file *file, void *data)
@@ -1923,12 +1922,12 @@ static int pilot_proc_pilot_last_recv_cmd_open(struct inode *inode, struct file 
 }
 
 /* file operations for /proc/pilot/last_recv_cmd */
-static const struct file_operations proc_pilot_last_recv_cmd_fops = {
-  .owner   = THIS_MODULE,
-  .open    = pilot_proc_pilot_last_recv_cmd_open,
-  .read    = seq_read,
-  .llseek  = seq_lseek,
-  .release = single_release
+static const struct proc_ops proc_pilot_last_recv_cmd_fops = {
+  
+  .proc_open =pilot_proc_pilot_last_recv_cmd_open,
+  .proc_read = seq_read,
+  .proc_lseek  =seq_lseek,
+  .proc_release = single_release
 };
 
 
@@ -2009,12 +2008,12 @@ static int pilot_proc_pilot_test_open(struct inode *inode, struct file *file)
 }
 
 /* file operations for /proc/pilot/test */
-static const struct file_operations proc_pilot_test_fops = {
-  .owner   = THIS_MODULE,
-  .open    = pilot_proc_pilot_test_open,
-  .read    = seq_read,
-  .llseek  = seq_lseek,
-  .release = single_release
+static const struct proc_ops proc_pilot_test_fops = {
+  
+  .proc_open =pilot_proc_pilot_test_open,
+  .proc_read = seq_read,
+  .proc_lseek  =seq_lseek,
+  .proc_release = single_release
 };
 
 /*  */
@@ -2069,12 +2068,12 @@ static int pilot_proc_pilot_uid_open(struct inode *inode, struct file *file)
   return single_open(file, pilot_proc_pilot_uid_show, NULL);
 }
 
-static const struct file_operations proc_pilot_uid_fops = {
-  .owner   = THIS_MODULE,
-  .open    = pilot_proc_pilot_uid_open,
-  .read    = seq_read,
-  .llseek  = seq_lseek,
-  .release = single_release
+static const struct proc_ops proc_pilot_uid_fops = {
+  
+  .proc_open =pilot_proc_pilot_uid_open,
+  .proc_read = seq_read,
+  .proc_lseek  =seq_lseek,
+  .proc_release = single_release
 };
 
 /*  */
@@ -2125,12 +2124,12 @@ static int pilot_proc_pilot_fwinfo_open(struct inode *inode, struct file *file)
   return single_open(file, pilot_proc_pilot_fwinfo_show, NULL);
 }
 
-static const struct file_operations proc_pilot_fwinfo_fops = {
-  .owner   = THIS_MODULE,
-  .open    = pilot_proc_pilot_fwinfo_open,
-  .read    = seq_read,
-  .llseek  = seq_lseek,
-  .release = single_release
+static const struct proc_ops proc_pilot_fwinfo_fops = {
+  
+  .proc_open =pilot_proc_pilot_fwinfo_open,
+  .proc_read = seq_read,
+  .proc_lseek  =seq_lseek,
+  .proc_release = single_release
 };
 
 static int pilot_proc_pilot_module_type_show(struct seq_file *file, void *data)
@@ -2150,13 +2149,13 @@ static int pilot_proc_pilot_module_type_open(struct inode *inode, struct file *f
 }
 
 /* file operations for /proc/pilot/moduleX/type */
-static const struct file_operations proc_pilot_module_type_fops = {
-  .owner   = THIS_MODULE,
-  .open    = pilot_proc_pilot_module_type_open,
-  .read    = seq_read,
-  .llseek  = seq_lseek,
-  .release = single_release,
-  .write   = pilot_proc_pilot_module_type_write
+static const struct proc_ops proc_pilot_module_type_fops = {
+  
+  .proc_open =pilot_proc_pilot_module_type_open,
+  .proc_read = seq_read,
+  .proc_lseek  =seq_lseek,
+  .proc_release = single_release,
+  .proc_write = pilot_proc_pilot_module_type_write
 };
 
 static int pilot_proc_pilot_module_firmware_type_show(struct seq_file *file, void *data)
@@ -2181,12 +2180,12 @@ static int pilot_proc_pilot_module_firmware_type_open(struct inode *inode, struc
   return single_open(file, pilot_proc_pilot_module_firmware_type_show, PDE_DATA(inode));
 }
 
-static const struct file_operations proc_pilot_module_firmware_type_fops = {
-  .owner   = THIS_MODULE,
-  .open    = pilot_proc_pilot_module_firmware_type_open,
-  .read    = seq_read,
-  .llseek  = seq_lseek,
-  .release = single_release
+static const struct proc_ops proc_pilot_module_firmware_type_fops = {
+  
+  .proc_open =pilot_proc_pilot_module_firmware_type_open,
+  .proc_read = seq_read,
+  .proc_lseek  =seq_lseek,
+  .proc_release = single_release
 };
 
 static int pilot_proc_pilot_module_uid_show(struct seq_file *file, void *data)
@@ -2212,12 +2211,12 @@ static int pilot_proc_pilot_module_uid_open(struct inode *inode, struct file *fi
 }
 
 /* file operations for /proc/pilot/moduleX/uid */
-static const struct file_operations proc_pilot_module_uid_fops = {
-  .owner   = THIS_MODULE,
-  .open    = pilot_proc_pilot_module_uid_open,
-  .read    = seq_read,
-  .llseek  = seq_lseek,
-  .release = single_release
+static const struct proc_ops proc_pilot_module_uid_fops = {
+  
+  .proc_open =pilot_proc_pilot_module_uid_open,
+  .proc_read = seq_read,
+  .proc_lseek  =seq_lseek,
+  .proc_release = single_release
 };
 
 static int pilot_proc_module_hid_show(struct seq_file *file, void *data)
@@ -2242,13 +2241,13 @@ static int pilot_proc_module_hid_open(struct inode *inode, struct file *file)
 }
 
 /* file operations for /proc/pilot/moduleX/hid */
-static const struct file_operations proc_pilot_module_hid_fops = {
-  .owner   = THIS_MODULE,
-  .open    = pilot_proc_module_hid_open,
-  .read    = seq_read,
-  .llseek  = seq_lseek,
-  .release = single_release,
-  .write   = pilot_proc_pilot_module_hid_write
+static const struct proc_ops proc_pilot_module_hid_fops = {
+  
+  .proc_open =pilot_proc_module_hid_open,
+  .proc_read = seq_read,
+  .proc_lseek  =seq_lseek,
+  .proc_release = single_release,
+  .proc_write = pilot_proc_pilot_module_hid_write
 };
 
 static int pilot_proc_module_fid_show(struct seq_file *file, void *data)
@@ -2272,13 +2271,13 @@ static int pilot_proc_module_fid_open(struct inode *inode, struct file *file)
   return single_open(file, pilot_proc_module_fid_show, PDE_DATA(inode));
 }
 
-static const struct file_operations proc_pilot_module_fid_fops = {
-  .owner = THIS_MODULE,
-  .open = pilot_proc_module_fid_open,
-  .read = seq_read,
-  .llseek = seq_lseek,
-  .release = single_release,
-  .write = pilot_proc_pilot_module_fid_write
+static const struct proc_ops proc_pilot_module_fid_fops = {
+  
+  .proc_open = pilot_proc_module_fid_open,
+  .proc_read = seq_read,
+  .proc_lseek = seq_lseek,
+  .proc_release = single_release,
+  .proc_write = pilot_proc_pilot_module_fid_write
 };
 
 static int pilot_proc_module_eeprom_user_show(struct seq_file *file, void *data)
@@ -2325,13 +2324,13 @@ static ssize_t pilot_proc_pilot_module_eeprom_user_write (struct file *file, con
   return count;
 }
 
-static const struct file_operations proc_pilot_module_eeprom_user_fops = {
-  .owner = THIS_MODULE,
-  .open = pilot_proc_module_eeprom_user_open,
-  .read = seq_read,
-  .llseek = seq_lseek,
-  .release = single_release,
-  .write = pilot_proc_pilot_module_eeprom_user_write
+static const struct proc_ops proc_pilot_module_eeprom_user_fops = {
+  
+  .proc_open = pilot_proc_module_eeprom_user_open,
+  .proc_read = seq_read,
+  .proc_lseek = seq_lseek,
+  .proc_release = single_release,
+  .proc_write = pilot_proc_pilot_module_eeprom_user_write
 };
 
 // **************** START exported functions for the extension modules *********************

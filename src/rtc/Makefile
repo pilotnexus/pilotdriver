@@ -22,7 +22,7 @@ help:
 local:
 	@echo "BUILDING RTC DRIVER"
 	cp $(BASE_DRV_SRC)/Module.symvers $(PWD)
-	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules 
+	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules  KBUILD_EXTMOD=`pwd`/../driver
 
 
 
