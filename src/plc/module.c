@@ -474,7 +474,7 @@ static ssize_t pilot_plc_proc_var_read(struct file *filep, char __user *buf, siz
       return -ERESTARTSYS;
     //ret = kfifo_to_user(&variable->fifo, buf, count, &copied);
     ret = kfifo_out(&variable->fifo, varbuf, MSG_PLC_VAR_MAX_LEN);
-    copied = raw_IEC_to_string(variable->iectype, varbuf, get_IEC_size(variable->iectype), buf, MAX_VAR_DATA_LENGTH);
+    copied = raw_IEC_to_string(variable->iectype, varbuf, get_IEC_size(variable->iectype), buf, count);
 
     LOG_DEBUG("raw_IEC_to_string (raw: %x%x%x%x%x%x%x%x '%.*s'), copied bytes: %i", varbuf[0],varbuf[1],varbuf[2],varbuf[3],varbuf[4],varbuf[5],varbuf[6],varbuf[7],copied, buf, copied);
 
