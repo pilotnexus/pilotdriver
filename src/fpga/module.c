@@ -21,6 +21,8 @@ MODULE_LICENSE("GPL");
 #define IN_RESET 0
 #define NO_RESET 1
 
+#define CHUNK_SIZE 128
+
 DECLARE_WAIT_QUEUE_HEAD(recv_wait); 
 internals_t m_internals ={.timeout=500};
 
@@ -149,7 +151,7 @@ static ssize_t pilot_fpga_proc_bitstream_read(struct file *filp, char *buf, size
 
  if (m_internals.modules[module_index].bitstream_size > 0 && (pos < m_internals.modules[module_index].bitstream_size))
  {
-    chunk = (pos + 256) > m_internals.modules[module_index].bitstream_size ? m_internals.modules[module_index].bitstream_size-pos : 256;
+    chunk = (pos + CHUNK_SIZE) > m_internals.modules[module_index].bitstream_size ? m_internals.modules[module_index].bitstream_size-pos : CHUNK_SIZE;
     flash_read(module_index, pos, buf, chunk);
     ret = chunk;
     *f_pos += chunk;
@@ -162,7 +164,7 @@ static ssize_t pilot_fpga_proc_bitstream_read(struct file *filp, char *buf, size
 static int pilot_fpga_proc_bitstream_show(struct seq_file *file, void *data)
 {
   //int addr = 0;
-  char buffer[256];
+  char buffer[CHUNK_SIZE];
   size_t count = 0, addr=0, chunk;
 
   int module_index = (int)file->private;
@@ -181,7 +183,7 @@ static int pilot_fpga_proc_bitstream_show(struct seq_file *file, void *data)
 
     while (addr < count)
     {
-      chunk = (addr + 256) > count ? count-addr : 256;
+      chunk = (addr + CHUNK_SIZE) > count ? count-addr : CHUNK_SIZE;
       flash_read(module_index, addr, buffer, chunk);
       addr += chunk;
 
@@ -249,12 +251,12 @@ static ssize_t pilot_fpga_proc_bitstream_write(struct file *file, const char __u
   while (bytes_written < count)
   {
     target = target_t_from_module_slot_and_port(module_index, module_port_1); //write, no return data
-    blocksize = (count - bytes_written) > 256 ? 256 : (count - bytes_written); /* sent the remaining bytes */
+    blocksize = (count - bytes_written) > CHUNK_SIZE ? CHUNK_SIZE : (count - bytes_written); /* sent the remaining bytes */
 
     if (!flash_prog(module_index, addr, (char *)(buf+bytes_written), blocksize))
       return -EINVAL;
 
-    addr += 256;
+    addr += CHUNK_SIZE;
     bytes_written += blocksize; /* increment the number of bytes written */
   }
 
