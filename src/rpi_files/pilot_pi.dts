@@ -10,7 +10,7 @@
     compatible = "brcm,bcm2835", "brcm,bcm2708", "brcm,bcm2709";
     /* disable spi-dev for spi0.0 & spi0.1 */
     fragment@0 {
-	target = ecspi@30820000;
+	target = <&spi0>;
 	__overlay__ {
 		status = "okay";
 
@@ -35,18 +35,6 @@
                 #address-cells = <0x1>;
                 #size-cells = <0x0>;
                 reg = <0>;      /* CE0 */
-                spi-max-frequency = <0x7a120>;
-				status = "okay";
-				data_m2r-gpios = <&gpio 27 0>;
-                boot-gpios = <&gpio 4 0>;
-                reset-gpios = <&gpio 17 0>;
-            };
-
-            pilot@1 {
-                compatible = "pilot";
-                #address-cells = <0x1>;
-                #size-cells = <0x0>;
-                reg = <1>;      /* CE1 */
                 spi-max-frequency = <0x7a120>;
 				status = "okay";
 				data_m2r-gpios = <&gpio 27 0>;
