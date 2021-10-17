@@ -30,12 +30,21 @@ coral_packagedir:="$(OUT_DIR)/build/$(localname)"
 coral_modulesdir:="$(coral_packagedir)/debian/lib/modules/$(kernel)/"
 coral_overlaysdir:="$(coral_packagedir)/debian/boot"
 
+reverse = $(if $(1),$(call reverse,$(wordlist 2,$(words $(1)),$(1)))) $(firstword $(1))
+
 local:
 	echo "Building Pilot Kernel Drivers for $(fullkernel)"
 	- rm -rf $(OUT_DIR)/bin/$(fullkernel)/*
 	- mkdir -p $(OUT_DIR)/bin/$(fullkernel)
 	cd driver && make local && cd ..
 	@for x in $(DRIVER_LIST); do cd $$x && make local && cp $(PWD)/$$x/*.ko $(OUT_DIR)/bin/$(fullkernel)/ && cd ..; done
+
+load:
+	$(eval UNLOAD_DRIVER_NAMES_LIST = $(call reverse,$(DRIVER_NAMES_LIST)))
+	# sudo pkill pilotd
+	@for x in $(UNLOAD_DRIVER_NAMES_LIST); do sudo rmmod "$$x" 2>&1 >/dev/null; done
+	@for x in $(DRIVER_NAMES_LIST); do sudo insmod "$(OUT_DIR)/bin/$(fullkernel)/$$x.ko"; done
+	@- cp /etc/pilot/variables /proc/pilot/plc/varconfig
 
 prepare:
 	sudo apt install -y git bc bison flex libssl-dev libncurses5-dev make

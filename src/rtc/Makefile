@@ -1,14 +1,7 @@
 obj-m += pilot_rtc.o
 pilot_rtc-objs := module.o
 
-BASE_DRV_SRC = $(PWD)/../driver
-PREFIX = $(PWD)/../../build/tools/arm-bcm2708/arm-bcm2708-linux-gnueabi/bin/arm-bcm2708-linux-gnueabi-
-ifneq ($(shell $(PREFIX)gcc --version >/dev/null 2>&1; echo $$?),0)
-	PREFIX = $(PWD)/../../build/tools/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64/bin/arm-linux-gnueabihf-
-endif
-KERNEL_HEADER_ROOT := $(PWD)/../../build/rpi
-KERNEL_DIR_LIST := $(shell ls -1vd $(KERNEL_HEADER_ROOT)/* 2> /dev/null | grep linux-rpi)
-KERNEL_VER_LIST := $(shell ls -1vd $(KERNEL_HEADER_ROOT)/* 2> /dev/null | grep linux-rpi | awk '{ sub(/.*linux-rpi-/,""); print }')
+include $(PWD)/../Makefile.common
 
 help:
 	@echo ""
@@ -18,26 +11,18 @@ help:
 # -------------------------------------------------------------------------------------------
 
 local:
-	@echo "BUILDING RTC DRIVER"
+	@echo "BUILDING LOCAL RTC DRIVER ${BUILD_MSG}" 
 	cp $(BASE_DRV_SRC)/Module.symvers $(PWD)
-	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules KBUILD_EXTRA_SYMBOLS=`pwd`/../driver/Module.symvers
+	$(KCPPFLAGS) make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules KBUILD_EXTRA_SYMBOLS=`pwd`/../driver/Module.symvers
 
 xc: $(addprefix xc_,$(KERNEL_VER_LIST))
 
 define xc_template
 xc_$(1):
-ifeq ($(DEBUG), 1)
-	@echo "BUILDING DEBUG VERSION"
-	@echo "#define DEBUG" > $(PWD)/../driver/debug.h
-else ifeq ($(DEBUG), 2)
-	@echo "BUILDING DEBUG LEVEL 2 VERSION"
-	@echo "#define DEBUG\n#define DEBUGALL" > $(PWD)/../driver/debug.h
-else
-	@echo "/* #define DEBUG */" > $(PWD)/../driver/debug.h
-endif
+	@echo "BUILDING RTC DRIVER ${BUILD_MSG}" 
 	make -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(PWD) clean
 	cp $(BASE_DRV_SRC)/Module.symvers $(PWD)
-	make ARCH=arm CROSS_COMPILE=$(PREFIX) -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(PWD) modules
+	$(KCPPFLAGS) make ARCH=arm CROSS_COMPILE=$(PREFIX) -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(PWD) modules
 	
 endef
 

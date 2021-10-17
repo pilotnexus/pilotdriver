@@ -1,14 +1,7 @@
 obj-m += pilot.o
 pilot-objs := module.o queue.o commands.o
 
-PREFIX = $(PWD)/../../build/tools/arm-bcm2708/arm-bcm2708-linux-gnueabi/bin/arm-bcm2708-linux-gnueabi-
-ifneq ($(shell $(PREFIX)gcc --version >/dev/null 2>&1; echo $$?),0)
-	PREFIX = $(PWD)/../../build/tools/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64/bin/arm-linux-gnueabihf-
-endif
-
-KERNEL_HEADER_ROOT := $(PWD)/../../build/rpi
-KERNEL_DIR_LIST := $(shell ls -1vd $(KERNEL_HEADER_ROOT)/* 2> /dev/null | grep linux-rpi)
-KERNEL_VER_LIST := $(shell ls -1vd $(KERNEL_HEADER_ROOT)/* 2> /dev/null | grep linux-rpi | awk '{ sub(/.*linux-rpi-/,""); print }')
+include $(PWD)/../Makefile.common
 
 help:
 	@echo ""
@@ -19,27 +12,16 @@ help:
 
 
 local:
-	@echo "BUILDING BASE DRIVER"
-	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules 
-
-
+	@echo "BUILDING LOCAL BASE DRIVER ${BUILD_MSG}" 
+	$(KCPPFLAGS) make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules 
 
 xc: $(addprefix xc_,$(KERNEL_VER_LIST))
 
 define xc_template
 xc_$(1):
-ifeq ($(DEBUG), 1)
-	@echo "BUILDING DEBUG VERSION"
+	@echo "BUILDING BASE DRIVER ${BUILD_MSG}"
 	make -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(PWD) clean
-	make ARCH=arm CROSS_COMPILE=$(PREFIX) -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(PWD) modules EXTRA_CFLAGS="-g -DDEBUG"
-else ifeq ($(DEBUG), 2)
-	@echo "BUILDING DEBUG LEVEL 2 VERSION"
-	make -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(PWD) clean
-	make ARCH=arm CROSS_COMPILE=$(PREFIX) -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(PWD) modules EXTRA_CFLAGS="-g -DDEBUG -DDEBUGALL"
-else
-	make -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(PWD) clean
-	make ARCH=arm CROSS_COMPILE=$(PREFIX) -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(PWD) modules
-endif
+	$(KCPPFLAGS) make ARCH=arm CROSS_COMPILE=$(PREFIX) -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(PWD) modules
 endef
 
 $(foreach xc,$(KERNEL_VER_LIST),$(eval $(call xc_template,$(xc))))
