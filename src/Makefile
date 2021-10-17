@@ -41,7 +41,7 @@ local:
 
 load:
 	$(eval UNLOAD_DRIVER_NAMES_LIST = $(call reverse,$(DRIVER_NAMES_LIST)))
-	# sudo pkill pilotd
+	@sudo pkill -f pilotd
 	@for x in $(UNLOAD_DRIVER_NAMES_LIST); do sudo rmmod "$$x" 2>&1 >/dev/null; done
 	@for x in $(DRIVER_NAMES_LIST); do sudo insmod "$(OUT_DIR)/bin/$(fullkernel)/$$x.ko"; done
 	@- cp /etc/pilot/variables /proc/pilot/plc/varconfig
