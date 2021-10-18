@@ -643,13 +643,14 @@ static int pilot_plc_try_get_variable_config(pilot_plc_variable_t * variable, ui
 {
   pilot_cmd_t cmd;
   int is_timedout = 0;
+  bool updated = false;
   unsigned long timestamp;
   msg_plc_var_config_t *data = (msg_plc_var_config_t *)cmd.data;
 
   /* reset the is state updated flag */
   switch(config) {
-    case 1: variable->is_subscribed_updated = false; break;
-    case 2: variable->is_forced_updated = false; break;
+    case 2: variable->is_subscribed_updated = false; break;
+    case 3: variable->is_forced_updated = false; break;
     default: return -1; break;
   }
 
@@ -658,19 +659,29 @@ static int pilot_plc_try_get_variable_config(pilot_plc_variable_t * variable, ui
   cmd.type = pilot_cmd_type_plc_read_var_config;
   data->number = variable->number;
   data->config = config;
+  data->value = 0;
 
-  cmd.length = MSG_LEN(3);
+  cmd.length = MSG_LEN(4);
   pilot_send_cmd(&cmd);
   /* pick a time that is timeout ms in the future */
   timestamp = jiffies + (timeout * HZ / 1000);
 
   /* wait until the state is updated or the timeout occurs */
-  while (_internals.is_state_updated == false) 
+  while (!updated)
+  {
+    switch(config) {
+      case 2: if (variable->is_subscribed_updated) updated = true; break;
+      case 3: if (variable->is_forced_updated) updated = true; break;
+      default: return -1; break;
+    }
+
     if (time_after(jiffies, timestamp))
-    {
+    { 
+      LOG_DEBUG("TIMEOUT pilot_plc_try_get_variable_config");
       is_timedout = 1;
       break;
-    }
+    } 
+  }
 
   return is_timedout ? -1 : SUCCESS;
 }
@@ -679,21 +690,18 @@ static int pilot_plc_try_set_variable_config(pilot_plc_variable_t * variable, ui
 {
   pilot_cmd_t cmd;
   int is_timedout = 0;
+  bool updated = false;
   unsigned long timestamp;
   msg_plc_var_config_t *data = (msg_plc_var_config_t *)cmd.data;
 
-  bool *is_updated;
-
   /* reset the is state updated flag */
   switch(config) {
-    case 1: is_updated = &variable->is_subscribed_updated; break;
-    case 2: is_updated = &variable->is_forced_updated; break;
+    case 2: variable->is_subscribed_updated = false; break;
+    case 3: variable->is_forced_updated = false; break;
     default: return -1; break;
   }
 
-  *is_updated = false;
-
-  /* set the plc state get request */
+  /* set the plc state set request */
   cmd.target = target_base;
   cmd.type = pilot_cmd_type_plc_write_var_config;
   data->number = variable->number;
@@ -706,30 +714,44 @@ static int pilot_plc_try_set_variable_config(pilot_plc_variable_t * variable, ui
   timestamp = jiffies + (timeout * HZ / 1000);
 
   /* wait until the state is updated or the timeout occurs */
-  while (*is_updated == 0) 
+  while (!updated) 
+  {
+    switch(config) {
+      case 2: if (variable->is_subscribed_updated) updated = true; break;
+      case 3: if (variable->is_forced_updated) updated = true; break;
+      default: return -1; break;
+    }
 
     if (time_after(jiffies, timestamp))
     {
+      LOG_DEBUG("TIMEOUT pilot_plc_try_set_variable_config");
       is_timedout = 1;
       break;
     }
+  }
 
   return is_timedout ? -1 : SUCCESS;
 }
 
 static int pilot_plc_proc_var_subscribed_show(struct seq_file *file, void *data)
 {
+  int ret;
   pilot_plc_variable_t *variable = (pilot_plc_variable_t *)file->private;
 
-  pilot_plc_try_get_variable_config(variable, 0x1, 200);
-  seq_printf(file, "%i\n", variable->subscribed ? 1 : 0);
- 
-  return 0;
+  if (pilot_plc_try_get_variable_config(variable, 0x2, 200) == SUCCESS)
+  {
+    seq_printf(file, "%i\n", variable->subscribed ? 1 : 0);
+    ret=0;
+  }
+  else
+  ret = -EFAULT;
+
+  return ret;
 }
 
 static ssize_t pilot_plc_proc_var_subscribed_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
-  int ret, waitret;
+  int ret;
   bool new_value;
   pilot_plc_variable_t *variable = (pilot_plc_variable_t *)PDE_DATA(file->f_inode);
 
@@ -739,12 +761,10 @@ static ssize_t pilot_plc_proc_var_subscribed_write(struct file *file, const char
   else
   {
     /* send a plc state set cmd to the pilot */
-    waitret = pilot_plc_try_set_variable_config(variable, 0x1, new_value ? 1 : 0, 200);
-
-    if (waitret == 0 || waitret == -ERESTARTSYS)
-      ret = -EINVAL;
+    if (pilot_plc_try_set_variable_config(variable, 0x2, new_value ? 1 : 0, 200) == SUCCESS)
+      ret = count;
     else
-      ret = count; /* we processed the complete input */
+      ret = -EINVAL;
   }
   return ret;
 }
@@ -758,7 +778,7 @@ static int pilot_plc_proc_var_forced_show(struct seq_file *file, void *data)
 {
   pilot_plc_variable_t *variable = (pilot_plc_variable_t *)file->private;
 
-  pilot_plc_try_get_variable_config(variable, 0x2, 200);
+  pilot_plc_try_get_variable_config(variable, 0x3, 200);
   seq_printf(file, "%i\n", variable->forced ? 1 : 0);
 
   return 0;
@@ -766,7 +786,7 @@ static int pilot_plc_proc_var_forced_show(struct seq_file *file, void *data)
 
 static ssize_t pilot_plc_proc_var_forced_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
-  int ret, waitret;
+  int ret = -EINVAL, waitret;
   bool new_value;
   pilot_plc_variable_t *variable = (pilot_plc_variable_t *)PDE_DATA(file->f_inode);
 
@@ -776,7 +796,7 @@ static ssize_t pilot_plc_proc_var_forced_write(struct file *file, const char __u
   else
   {
     /* send a plc state set cmd to the pilot */
-    waitret = pilot_plc_try_set_variable_config(variable, 0x2, new_value ? 1 : 0, 200);
+    waitret = pilot_plc_try_set_variable_config(variable, 0x3, new_value ? 1 : 0, 200);
 
     if (waitret == 0 || waitret == -ERESTARTSYS)
       ret = -EINVAL;
@@ -1047,8 +1067,8 @@ static void pilot_plc_send_set_state_cmd(pilot_plc_state_t state)
   memset(&cmd, 0, sizeof(pilot_cmd_t));
   cmd.target = target_base;
   cmd.type = pilot_cmd_type_plc_state_set;
-  cmd.data[(int)pilot_plc_state_index] = state;
-  cmd.length = MSG_LEN(4);
+  memcpy(cmd.data, (void *)&state, sizeof(state));
+  cmd.length = MSG_LEN(sizeof(state));
   pilot_send_cmd(&cmd);
 }
 
@@ -1675,35 +1695,41 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
     {
       switch(c->config)
       {
-        case 1: 
+        case 2: 
           _internals.variables[c->number]->subscribed = c->value > 0 ? true : false;
           _internals.variables[c->number]->is_subscribed_updated = true;
+          LOG_DEBUG("pilot_cmd_type_plc_read_var_config subscribed read = %d", _internals.variables[c->number]->subscribed);
           break;
-        case 2: 
+        case 3: 
           _internals.variables[c->number]->forced = c->value > 0 ? true : false;
           _internals.variables[c->number]->is_forced_updated = true;
+          LOG_DEBUG("pilot_cmd_type_plc_read_var_config forced read = %d", _internals.variables[c->number]->forced);
           break;
         default:
-          //unknown command
+          LOG_DEBUG("pilot_cmd_type_plc_read_var_config UNKNOWN config value: %d", c->config);
         break;
       }
     }
     ret = pilot_cmd_handler_status_handled;
   break;
+
   case pilot_cmd_type_plc_write_var_config:
     c = (msg_plc_var_config_t *)&cmd.data;
     if (c->number < _internals.variables_count) 
     {
       switch(c->config)
       {
-        case 1: 
-          _internals.variables[c->number]->is_subscribed_updated = true;
-          break;
         case 2: 
+          _internals.variables[c->number]->is_subscribed_updated = true;
+          LOG_DEBUG("pilot_cmd_type_plc_write_var_config subscribed");
+          break;
+        case 3: 
           _internals.variables[c->number]->is_forced_updated = true;
+          LOG_DEBUG("pilot_cmd_type_plc_write_var_config forced");
           break;
         default:
-          //unknown command
+          c->value = 0;
+          LOG_DEBUG("pilot_cmd_type_plc_write_var_config UNKNOWN config value: %d", c->config);
         break;
       }
     }

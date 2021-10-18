@@ -132,6 +132,7 @@ typedef struct {
 } pilot_plc_variable_t;
 
 
+
 /* struct that groups internal members */
 typedef struct {
   volatile bool is_cmd_handler_registered; /* set to 1 if the cmd handler is registered with the rpcp */

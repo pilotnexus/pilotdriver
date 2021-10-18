@@ -23,55 +23,55 @@ typedef u16 spidata_t;
 typedef enum
 {
   pilot_cmd_type_invalid = 0,
-  pilot_cmd_type_eeprom_uid_get,             /* rpi <->  request to send the eeprom uid of the specified module */
-  pilot_cmd_type_eeprom_hid_get,             /* rpi <->  request to send the eeprom hid of the specified module */
-  pilot_cmd_type_eeprom_hid_set,             /* rpi <->  command to set the eeprom hid of the specified module */
-  pilot_cmd_type_eeprom_fid_get,             /* rpi <->  request to get the eeprom fid of the specified module */
-  pilot_cmd_type_eeprom_fid_set,             /* rpi ->  command to set the eeprom fid of the specified module */
-  pilot_cmd_type_usart_set_baudrate,         /* rpi ->  command to set the baudrate of the specified usart */
-  pilot_cmd_type_usart_set_stopbits,         /* rpi ->  command to set the stopbits of the specified usart */
-  pilot_cmd_type_usart_set_wordlength,       /* rpi ->  command to set the wordlength of the specified usart */
-  pilot_cmd_type_usart_set_parity,           /* rpi ->  command to set the parity of the specified usart */
-  pilot_cmd_type_usart_send_break,           /* rpi ->  command to send a break on the specified usart */
-  pilot_cmd_type_input_get_input,            /* rpi <->  request to send back the state of the input */
-  pilot_cmd_type_rtc_get,                    /* rpi <->  messages to request and send the datetime of the rtc */
-  pilot_cmd_type_rtc_set,                    /* rpi ->  command to set the rtc */
-  pilot_cmd_type_bufferstate,                /* rpi <-  message to inform the rpi of the current bufferstate */
-  pilot_cmd_type_input_get_counter,          /* rpi <->  request to send the value of the counter */
-  pilot_cmd_type_input_set_counter,          /* rpi ->  command to set the value of the counter */
-  pilot_cmd_type_gps_set_enable,             /* rpi ->  command to enable / disable the gps */
-  pilot_cmd_type_gps_get_enable,             /* rpi <->  request to send the enabled state of the gps module */
-  pilot_cmd_type_io16_set_direction,         /* rpi ->  command to set direction of io block */
-  pilot_cmd_type_output_set_value,           /* rpi ->  command to set output value */
-  pilot_cmd_type_input_changed,              /* rpi <-  command that informs the rpi that an input changed */
-  pilot_cmd_type_onewire_set_enable,         /* rpi ->  command to enable / disable 1-wire */
-  pilot_cmd_type_onewire_get_enable,         /* rpi <->  request to send the enabled state of the 1-wire module */
-  pilot_cmd_type_gsm_set_enable,             /* rpi <->  command to enable / disable the gsm */
-  pilot_cmd_type_gsm_get_enable,             /* rpi <->  request to send the enabled state of the gsm module */
-  pilot_cmd_type_module_type_get,            /* rpi <->  request to send the module type that the firmware was built for */
-  pilot_cmd_type_slcd_udpate,                /* rpi ->  command that signals the start of an update stream */
-  pilot_cmd_type_slcd_set_resolution,        /* rpi ->  command to set the display resolution */
-  pilot_cmd_type_slcd_get_resolution,        /* rpi <->  request to send the display resolution */
-  pilot_cmd_type_eeprom_userdata_get,        /* rpi <->  request to send custom user data from the eeprom */
-  pilot_cmd_type_eeprom_userdata_set,        /* rpi ->  request to write custom user data to the eeprom */
-  pilot_cmd_type_plc_state_get,              /* rpi <->  request to send the state of the plc */
-  pilot_cmd_type_plc_state_set,              /* rpi ->  command to set the state of the plc */
-  pilot_cmd_type_plc_cycletimes_get,         /* rpi <->  request to send the plc cycle times */
-  pilot_cmd_type_plc_read_var_config,        /* rpi ->  command to notify the  that the plc variable config stream will be send */
-  pilot_cmd_type_plc_write_var_config,       /* rpi <->  request to send the configured plc variables */
-  pilot_cmd_type_plc_variable_get,           /* rpi <->  request to send the configured plc variables */
-  pilot_cmd_type_plc_variable_set,           /* rpi ->  comand to write the configure plc variables */
-  pilot_cmd_type_lora_set_enable,            /* rpi ->  command to enable / disable lora module */
-  pilot_cmd_type_lora_get_enable,            /* rpi <->  request to send the enabled state of the lora module */
-  pilot_cmd_type_test_run,                   /* rpi <->  request to run internal tests */
-  pilot_cmd_type_module_status_get,          /* rpi <-> get module status */
-  pilot_cmd_type_module_status_set,          /* rpi <-> set module status */
-  pilot_cmd_type_fpga_state,                 /* rpi <-> fpga state */
-  pilot_cmd_type_fpga_cmd,                   /* rpi <-> fpga write data */
-  pilot_cmd_type_comm_stats_get,             /* rpi <-> get communication stats */
-  pilot_cmd_type_fwinfo,                     /* rpi <-> get fw info */
-  pilot_cmd_type_uart_mode_get,              /* rpi <-> get uart mode */
-  pilot_cmd_type_uart_mode_set,              /* rpi <-> set uart mode */
+  pilot_cmd_type_eeprom_uid_get,             /* 0x1 rpi <->  request to send the eeprom uid of the specified module */
+  pilot_cmd_type_eeprom_hid_get,             /* 0x2 rpi <->  request to send the eeprom hid of the specified module */
+  pilot_cmd_type_eeprom_hid_set,             /* 0x3 rpi <->  command to set the eeprom hid of the specified module */
+  pilot_cmd_type_eeprom_fid_get,             /* 0x4 rpi <->  request to get the eeprom fid of the specified module */
+  pilot_cmd_type_eeprom_fid_set,             /* 0x5 rpi ->  command to set the eeprom fid of the specified module */
+  pilot_cmd_type_usart_set_baudrate,         /* 0x6 rpi ->  command to set the baudrate of the specified usart */
+  pilot_cmd_type_usart_set_stopbits,         /* 0x7 rpi ->  command to set the stopbits of the specified usart */
+  pilot_cmd_type_usart_set_wordlength,       /* 0x8 rpi ->  command to set the wordlength of the specified usart */
+  pilot_cmd_type_usart_set_parity,           /* 0x9 rpi ->  command to set the parity of the specified usart */
+  pilot_cmd_type_usart_send_break,           /* 0xa rpi ->  command to send a break on the specified usart */
+  pilot_cmd_type_input_get_input,            /* 0xb rpi <->  request to send back the state of the input */
+  pilot_cmd_type_rtc_get,                    /* 0xc rpi <->  messages to request and send the datetime of the rtc */
+  pilot_cmd_type_rtc_set,                    /* 0xd rpi ->  command to set the rtc */
+  pilot_cmd_type_bufferstate,                /* 0xe rpi <-  message to inform the rpi of the current bufferstate */
+  pilot_cmd_type_input_get_counter,          /* 0xf rpi <->  request to send the value of the counter */
+  pilot_cmd_type_input_set_counter,          /* 0x10 rpi ->  command to set the value of the counter */
+  pilot_cmd_type_gps_set_enable,             /* 0x11 rpi ->  command to enable / disable the gps */
+  pilot_cmd_type_gps_get_enable,             /* 0x12 rpi <->  request to send the enabled state of the gps module */
+  pilot_cmd_type_io16_set_direction,         /* 0x13 rpi ->  command to set direction of io block */
+  pilot_cmd_type_output_set_value,           /* 0x14 rpi ->  command to set output value */
+  pilot_cmd_type_input_changed,              /* 0x15 rpi <-  command that informs the rpi that an input changed */
+  pilot_cmd_type_onewire_set_enable,         /* 0x16 rpi ->  command to enable / disable 1-wire */
+  pilot_cmd_type_onewire_get_enable,         /* 0x17 rpi <->  request to send the enabled state of the 1-wire module */
+  pilot_cmd_type_gsm_set_enable,             /* 0x18 rpi <->  command to enable / disable the gsm */
+  pilot_cmd_type_gsm_get_enable,             /* 0x19 rpi <->  request to send the enabled state of the gsm module */
+  pilot_cmd_type_module_type_get,            /* 0x1a rpi <->  request to send the module type that the firmware was built for */
+  pilot_cmd_type_slcd_udpate,                /* 0x1b rpi ->  command that signals the start of an update stream */
+  pilot_cmd_type_slcd_set_resolution,        /* 0x1c rpi ->  command to set the display resolution */
+  pilot_cmd_type_slcd_get_resolution,        /* 0x1d rpi <->  request to send the display resolution */
+  pilot_cmd_type_eeprom_userdata_get,        /* 0x1e rpi <->  request to send custom user data from the eeprom */
+  pilot_cmd_type_eeprom_userdata_set,        /* 0x1f rpi ->  request to write custom user data to the eeprom */
+  pilot_cmd_type_plc_state_get,              /* 0x20 rpi <->  request to send the state of the plc */
+  pilot_cmd_type_plc_state_set,              /* 0x21 rpi ->  command to set the state of the plc */
+  pilot_cmd_type_plc_cycletimes_get,         /* 0x22 rpi <->  request to send the plc cycle times */
+  pilot_cmd_type_plc_read_var_config,        /* 0x23 rpi ->  command to notify the  that the plc variable config stream will be send */
+  pilot_cmd_type_plc_write_var_config,       /* 0x24 rpi <->  request to send the configured plc variables */
+  pilot_cmd_type_plc_variable_get,           /* 0x25 rpi <->  request to send the configured plc variables */
+  pilot_cmd_type_plc_variable_set,           /* 0x26 rpi ->  comand to write the configure plc variables */
+  pilot_cmd_type_lora_set_enable,            /* 0x27 rpi ->  command to enable / disable lora module */
+  pilot_cmd_type_lora_get_enable,            /* 0x28 rpi <->  request to send the enabled state of the lora module */
+  pilot_cmd_type_test_run,                   /* 0x29 rpi <->  request to run internal tests */
+  pilot_cmd_type_module_status_get,          /* 0x2a rpi <-> get module status */
+  pilot_cmd_type_module_status_set,          /* 0x2b rpi <-> set module status */
+  pilot_cmd_type_fpga_state,                 /* 0x2c rpi <-> fpga state */
+  pilot_cmd_type_fpga_cmd,                   /* 0x2d rpi <-> fpga write data */
+  pilot_cmd_type_comm_stats_get,             /* 0x2e rpi <-> get communication stats */
+  pilot_cmd_type_fwinfo,                     /* 0x2f rpi <-> get fw info */
+  pilot_cmd_type_uart_mode_get,              /* 0x30 rpi <-> get uart mode */
+  pilot_cmd_type_uart_mode_set,              /* 0x31 rpi <-> set uart mode */
 } pilot_cmd_type_t;
 
 /* enum that specifies the target of the stream communication
@@ -298,10 +298,10 @@ typedef enum
   pilot_eeprom_userdata_index_number = 0 /* encode the eeprom user index in the last byte */
 } pilot_eeprom_userdata_index_t;
 
-typedef enum
+typedef enum 
 {
-  pilot_plc_state_stop = 0,
-  pilot_plc_state_run = 1
+  pilot_plc_state_stop = 1,
+  pilot_plc_state_run = 0
 } pilot_plc_state_t;
 
 typedef enum
