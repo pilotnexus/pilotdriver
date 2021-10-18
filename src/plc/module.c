@@ -677,7 +677,7 @@ static int pilot_plc_try_get_variable_config(pilot_plc_variable_t * variable, ui
 
     if (time_after(jiffies, timestamp))
     { 
-      LOG_DEBUG("TIMEOUT pilot_plc_try_get_variable_config");
+      LOG_DEBUG("TIMEOUT pilot_plc_try_get_variable_config (config %d, varnum %d)", config, variable->number);
       is_timedout = 1;
       break;
     } 
@@ -686,20 +686,10 @@ static int pilot_plc_try_get_variable_config(pilot_plc_variable_t * variable, ui
   return is_timedout ? -1 : SUCCESS;
 }
 
-static int pilot_plc_try_set_variable_config(pilot_plc_variable_t * variable, uint8_t config, uint8_t value, int timeout)
+static void pilot_plc_set_variable_config(pilot_plc_variable_t * variable, uint8_t config, uint8_t value)
 {
   pilot_cmd_t cmd;
-  int is_timedout = 0;
-  bool updated = false;
-  unsigned long timestamp;
   msg_plc_var_config_t *data = (msg_plc_var_config_t *)cmd.data;
-
-  /* reset the is state updated flag */
-  switch(config) {
-    case 2: variable->is_subscribed_updated = false; break;
-    case 3: variable->is_forced_updated = false; break;
-    default: return -1; break;
-  }
 
   /* set the plc state set request */
   cmd.target = target_base;
@@ -710,6 +700,24 @@ static int pilot_plc_try_set_variable_config(pilot_plc_variable_t * variable, ui
 
   cmd.length = MSG_LEN(4);
   pilot_send_cmd(&cmd);
+}
+
+static int pilot_plc_try_set_variable_config(pilot_plc_variable_t * variable, uint8_t config, uint8_t value, int timeout)
+{
+  int is_timedout = 0;
+  bool updated = false;
+  unsigned long timestamp;
+
+  /* reset the is state updated flag */
+  switch(config) {
+    case 2: variable->is_subscribed_updated = false; break;
+    case 3: variable->is_forced_updated = false; break;
+    default: return -1; break;
+  }
+
+  /* set the plc state set request */
+  pilot_plc_set_variable_config(variable, config, value);
+
   /* pick a time that is timeout ms in the future */
   timestamp = jiffies + (timeout * HZ / 1000);
 
@@ -724,7 +732,7 @@ static int pilot_plc_try_set_variable_config(pilot_plc_variable_t * variable, ui
 
     if (time_after(jiffies, timestamp))
     {
-      LOG_DEBUG("TIMEOUT pilot_plc_try_set_variable_config");
+      LOG_DEBUG("TIMEOUT pilot_plc_try_set_variable_config (config %d, varnum %d)", config, variable->number);
       is_timedout = 1;
       break;
     }
@@ -1412,6 +1420,13 @@ static ssize_t pilot_plc_proc_stream_write(struct file *file, const char __user 
           pilot_plc_send_set_variable_cmd(pe.sub, 0, pe.data, get_IEC_size(_internals.variables[pe.sub]->iectype));
         }
       break;
+      case 0x2: //write variable config
+        if (pe.sub < _internals.variables_count)
+        {
+          LOG_DEBUG("stream write to variable %d config received", pe.sub);
+          pilot_plc_set_variable_config(_internals.variables[pe.sub], pe.reserved, pe.data[0]);
+        }
+      break;
       case 0x10: //write plc state
         memcpy(&value, pe.data, sizeof(pilot_plc_state_t));
         pilot_plc_send_set_state_cmd(value);
@@ -1709,6 +1724,17 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
           LOG_DEBUG("pilot_cmd_type_plc_read_var_config UNKNOWN config value: %d", c->config);
         break;
       }
+
+      //send stream event
+      pe.cmd = 0x2; //get var config event
+      pe.reserved = c->config;
+      pe.sub = c->number;
+      pe.data[0] = c->value;
+      if (kfifo_put(&_internals.event_state.events, pe) != 0)
+      {
+		    wake_up_poll(&_internals.event_state.wait, EPOLLIN | EPOLLPRI);
+      }
+
     }
     ret = pilot_cmd_handler_status_handled;
   break;
@@ -1721,22 +1747,33 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
       {
         case 2: 
           _internals.variables[c->number]->is_subscribed_updated = true;
-          LOG_DEBUG("pilot_cmd_type_plc_write_var_config subscribed");
+          LOG_DEBUG("pilot_cmd_type_plc_write_var_config (varnum %d) subscribed", c->number);
           break;
         case 3: 
           _internals.variables[c->number]->is_forced_updated = true;
-          LOG_DEBUG("pilot_cmd_type_plc_write_var_config forced");
+          LOG_DEBUG("pilot_cmd_type_plc_write_var_config (varnum %d) forced", c->number);
           break;
         default:
           c->value = 0;
           LOG_DEBUG("pilot_cmd_type_plc_write_var_config UNKNOWN config value: %d", c->config);
         break;
       }
+
+      //send stream event
+      pe.cmd = 0x2; //get var config event
+      pe.reserved = c->config;
+      pe.sub = c->number;
+      pe.data[0] = c->value;
+      if (kfifo_put(&_internals.event_state.events, pe) != 0)
+      {
+		    wake_up_poll(&_internals.event_state.wait, EPOLLIN | EPOLLPRI);
+      }
     }
     ret = pilot_cmd_handler_status_handled;
   break;
 
     /* we're receiving the answer to the plc_state_get command */
+  case pilot_cmd_type_plc_state_set:
   case pilot_cmd_type_plc_state_get:
     _internals.state = (pilot_plc_state_t)cmd.data[(int)pilot_plc_state_index];
     mb();
@@ -1753,6 +1790,7 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
     /* mark the command as handled */
     ret = pilot_cmd_handler_status_handled;
     break;
+  case pilot_cmd_type_module_status_set:
   case pilot_cmd_type_module_status_get:
     pe.cmd = 0x11;
     pe.reserved = target_t_get_module_slot(cmd.target);

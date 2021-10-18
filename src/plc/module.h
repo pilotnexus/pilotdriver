@@ -123,15 +123,13 @@ typedef struct {
   pilot_plc_vardir_t *dir;
   bool subscribed;
   bool forced;
-  bool is_variable_updated;
-  bool is_poll;
-  bool is_force_value_updated;
-  bool is_subscribed_updated;
-  bool is_forced_updated;
+  volatile bool is_variable_updated;
+  volatile bool is_poll;
+  volatile bool is_force_value_updated;
+  volatile bool is_subscribed_updated;
+  volatile bool is_forced_updated;
   struct kfifo_rec_ptr_1 fifo;
 } pilot_plc_variable_t;
-
-
 
 /* struct that groups internal members */
 typedef struct {
