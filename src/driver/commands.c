@@ -45,14 +45,14 @@
 #define pilot_CMD_TYPE_LORA_SET_ENABLE "LoRA set enable"
 #define pilot_CMD_TYPE_LORA_GET_ENABLE "LoRA get enable"
 #define pilot_CMD_TYPE_TEST_RUN "test run"
-#define pilot_CMD_TYPE_MODULE_STATUS_GET "module_status_get"
-#define pilot_CMD_TYPE_MODULE_STATUS_SET "module_status_set"
-//#define pilot_CMD_TYPE_RESERVED1 "reserved1"  
-//#define pilot_CMD_TYPE_RESERVED2 "reserved2" 
+#define pilot_CMD_TYPE_MODULE_STATUS_GET "Module status get"  
+#define pilot_CMD_TYPE_MODULE_STATUS_SET "Module status set"  
 #define pilot_CMD_TYPE_FPGA_STATE "fpga state"
 #define pilot_CMD_TYPE_FPGA_CMD "fpga cmd" 
 #define pilot_CMD_TYPE_COMM_STAT "comm stat"
 #define pilot_CMD_TYPE_FWINFO "fw info" 
+#define pilot_CMD_TYPE_UART_MODE_GET "UART mode get"
+#define pilot_CMD_TYPE_UART_MODE_SET "UART mode set"
 
 char* pilot_cmd_type_to_name(pilot_cmd_type_t type)
 {
@@ -104,9 +104,10 @@ char* pilot_cmd_type_to_name(pilot_cmd_type_t type)
     case pilot_cmd_type_module_status_set: return pilot_CMD_TYPE_MODULE_STATUS_SET;
     case pilot_cmd_type_fpga_state: return pilot_CMD_TYPE_FPGA_STATE;
     case pilot_cmd_type_fpga_cmd: return pilot_CMD_TYPE_FPGA_CMD;
-    case pilot_cmd_type_comm_stat: return pilot_CMD_TYPE_COMM_STAT;
+    case pilot_cmd_type_comm_stats_get: return pilot_CMD_TYPE_COMM_STAT;
     case pilot_cmd_type_fwinfo: return pilot_CMD_TYPE_FWINFO;
-
+    case pilot_cmd_type_uart_mode_get: return pilot_CMD_TYPE_UART_MODE_GET;
+    case pilot_cmd_type_uart_mode_set: return pilot_CMD_TYPE_UART_MODE_SET;
     default: return pilot_CMD_TYPE_UNKNOWN;
   }
 }

@@ -46,6 +46,10 @@ typedef struct {
   volatile int type_is_updated;                     /* set when the module type is updated */
   DEF_WQ_HEAD(type_is_updated_wq);
 
+  uint32_t status;                                    /* state of the module, returned by the firmware */
+  volatile int status_is_updated;                     /* set when the module state is updated */
+  DEF_WQ_HEAD(status_is_updated_wq);
+
   stm_bufferstate_t bufferstate[MODULE_PORT_COUNT]; /* current bufferstate of the module on the stm */
   pilot_eeprom_uid_t uid;                            /* last received uid of the module */
   volatile int uid_is_updated;                      /* set when the uid is updated */
@@ -139,6 +143,11 @@ typedef struct
   stream_callback_t stream_callback;
 
   bool pilot_recv_buffer_full;
+
+  /* uart mode */
+  DEF_WQ_HEAD(uart_mode_is_updated_wq);
+  volatile int uart_mode_is_updated;
+  int uartmode; /* operation mode of the uart 0=normal, 1=debug */
 
   /* fw info */
   char fwinfo[MODULE_FWINFO_LENGTH+1];

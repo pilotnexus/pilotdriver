@@ -216,8 +216,7 @@ static void pilot_plc_send_get_variable_cmd(pilot_plc_variable_t *variable, uint
   v->opt |= SET_VAR_SUB(subvalue);
   v->number = variable->number;
 
-  //cmd.length = MSG_LEN(MSG_PLC_VAR_HEADER_LEN);
-  cmd.length = 1;
+  cmd.length = MSG_LEN(MSG_PLC_VAR_HEADER_LEN);
   pilot_send_cmd(&cmd);
 }
 
@@ -644,8 +643,8 @@ static int pilot_plc_try_get_variable_config(pilot_plc_variable_t * variable, ui
 
   /* reset the is state updated flag */
   switch(config) {
-    case 2: variable->is_subscribed_updated = false; break;
-    case 3: variable->is_forced_updated = false; break;
+    case 1: variable->is_subscribed_updated = false; break;
+    case 2: variable->is_forced_updated = false; break;
     default: return -1; break;
   }
 
@@ -661,22 +660,12 @@ static int pilot_plc_try_get_variable_config(pilot_plc_variable_t * variable, ui
   timestamp = jiffies + (timeout * HZ / 1000);
 
   /* wait until the state is updated or the timeout occurs */
-  while (true) 
-  {
+  while (_internals.is_state_updated == false) 
     if (time_after(jiffies, timestamp))
     {
       is_timedout = 1;
       break;
-    } 
-    else if (config == 2 && variable->is_subscribed_updated) 
-    {
-      break;
     }
-    else if (config == 3 && variable->is_forced_updated)
-    {
-      break;
-    }
-  }
 
   return is_timedout ? -1 : SUCCESS;
 }
@@ -690,14 +679,8 @@ static int pilot_plc_try_set_variable_config(pilot_plc_variable_t * variable, ui
 
   /* reset the is state updated flag */
   switch(config) {
-    case 2: 
-      variable->is_subscribed_updated = false; 
-      LOG_DEBUG("trying to set subscribed for var %d with value %d\n", variable->number, value);
-    break;
-    case 3: 
-      variable->is_forced_updated = false;
-      LOG_DEBUG("trying to set forced for var %d with value %d\n", variable->number, value);
-    break;
+    case 1: variable->is_subscribed_updated = false; break;
+    case 2: variable->is_forced_updated = false; break;
     default: return -1; break;
   }
 
@@ -714,22 +697,13 @@ static int pilot_plc_try_set_variable_config(pilot_plc_variable_t * variable, ui
   timestamp = jiffies + (timeout * HZ / 1000);
 
   /* wait until the state is updated or the timeout occurs */
-  while (true) 
-  {
+  while (_internals.is_state_updated == 0) 
     if (time_after(jiffies, timestamp))
     {
       is_timedout = 1;
       break;
     }
-    else if (config == 2 && variable->is_subscribed_updated) 
-    {
-      break;
-    }
-    else if (config == 3 && variable->is_forced_updated)
-    {
-      break;
-    }
-  }
+
   return is_timedout ? -1 : SUCCESS;
 }
 
@@ -737,7 +711,7 @@ static int pilot_plc_proc_var_subscribed_show(struct seq_file *file, void *data)
 {
   pilot_plc_variable_t *variable = (pilot_plc_variable_t *)file->private;
 
-  pilot_plc_try_get_variable_config(variable, 0x2, 200);
+  pilot_plc_try_get_variable_config(variable, 0x1, 200);
   seq_printf(file, "%i\n", variable->subscribed ? 1 : 0);
  
   return 0;
@@ -755,7 +729,7 @@ static ssize_t pilot_plc_proc_var_subscribed_write(struct file *file, const char
   else
   {
     /* send a plc state set cmd to the pilot */
-    waitret = pilot_plc_try_set_variable_config(variable, 0x2, new_value ? 1 : 0, 200);
+    waitret = pilot_plc_try_set_variable_config(variable, 0x1, new_value ? 1 : 0, 200);
 
     if (waitret == 0 || waitret == -ERESTARTSYS)
       ret = -EINVAL;
@@ -774,7 +748,7 @@ static int pilot_plc_proc_var_forced_show(struct seq_file *file, void *data)
 {
   pilot_plc_variable_t *variable = (pilot_plc_variable_t *)file->private;
 
-  pilot_plc_try_get_variable_config(variable, 0x3, 200);
+  pilot_plc_try_get_variable_config(variable, 0x2, 200);
   seq_printf(file, "%i\n", variable->forced ? 1 : 0);
 
   return 0;
@@ -792,7 +766,7 @@ static ssize_t pilot_plc_proc_var_forced_write(struct file *file, const char __u
   else
   {
     /* send a plc state set cmd to the pilot */
-    waitret = pilot_plc_try_set_variable_config(variable, 0x3, new_value ? 1 : 0, 200);
+    waitret = pilot_plc_try_set_variable_config(variable, 0x2, new_value ? 1 : 0, 200);
 
     if (waitret == 0 || waitret == -ERESTARTSYS)
       ret = -EINVAL;
@@ -1063,7 +1037,7 @@ static void pilot_plc_send_set_state_cmd(pilot_plc_state_t state)
   memset(&cmd, 0, sizeof(pilot_cmd_t));
   cmd.target = target_base;
   cmd.type = pilot_cmd_type_plc_state_set;
-  cmd.data[(int32_t)pilot_plc_state_index] = state;
+  cmd.data[(int)pilot_plc_state_index] = state;
   cmd.length = MSG_LEN(4);
   pilot_send_cmd(&cmd);
 }
@@ -1351,7 +1325,6 @@ static ssize_t pilot_plc_proc_stream_read(struct file *filep, char __user *buf, 
 		if (mutex_lock_interruptible(&_internals.event_state.read_lock))
 			return -ERESTARTSYS;
 		ret = kfifo_to_user(&_internals.event_state.events, buf, count, &copied);
-
 		mutex_unlock(&_internals.event_state.read_lock);
 
 		if (ret)
@@ -1376,29 +1349,9 @@ static ssize_t pilot_plc_proc_stream_read(struct file *filep, char __user *buf, 
 
 static ssize_t pilot_plc_proc_stream_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
-  pilotevent_data pe;
   int ret = -EINVAL;
-
   //pilotevent_data
-  if (count != sizeof(pilotevent_data))
-    return ret; /* return an error if the conversion fails */
-  
-  if (copy_from_user(&pe, buf, count) !=0)
-    return ret;
-
-  switch (pe.cmd)
-  {
-    case 0x1: //var
-     pilot_plc_send_set_variable_cmd(pe.p2, GET_VAR_SUB(pe.p1), pe.data, GET_VAR_LEN(pe.p1));
-    break;
-    case 0x10: //plintc state
-      pilot_plc_send_set_state_cmd((pilot_plc_state_t)*((int32_t *)pe.data));
-    break; 
-    case 0x11: //module state
-
-    break;
-  }
-
+  //if (count != sizeof(pilotevent_data))
   return ret;
 }
 
@@ -1513,7 +1466,7 @@ static int pilot_proc_pilot_fwinfo_open(struct inode *inode, struct file *file)
   return single_open(file, pilot_proc_pilot_fwinfo_show, NULL);
 }
 
-static const struct file_operations proc_plc_fwinfo_fops = {
+static const struct file_operations proc_pilot_fwinfo_fops = {
   .owner   = THIS_MODULE,
   .open    = pilot_proc_pilot_fwinfo_open,
   .read    = seq_read,
@@ -1581,21 +1534,21 @@ static void pilot_plc_proc_deinit(void)
 // *******************************************************************
 // START pilot interface function implementation
 
-static uint8_t *get_plc_var(uint8_t *data, plc_var_t *out) {
+static uint8_t *get_plc_var(u8 *data, plc_var_t *out) {
   msg_plc_var_t *v = (msg_plc_var_t *)data;
-  out->length = v->opt & 0xF;
+  u8 len = v->opt & 0xF;
   out->number = v->number;
   out->subvalue = (v->opt >> 4) & 0x3;
 
   memset(out->value, 0, sizeof(out->value));
 
-  if (out->length > sizeof(out->value))
+  if (len > sizeof(out->value))
     return NULL; //not allowed
   
-  memcpy(out->value, v->value, out->length);
+  memcpy(out->value, v->value, len);
 
-  if (v->opt & 0x80)
-    return data + 3 + out->length; //move pointer to next element
+  if (v->opt && 0x7F)
+    return data + 3 + len; //move pointer to next element
     
   return NULL; //no further variables
 }
@@ -1604,7 +1557,7 @@ static uint8_t *get_plc_var(uint8_t *data, plc_var_t *out) {
 static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
 {
   pilot_cmd_handler_status_t ret;
-  pilotevent_data pe;
+  struct pilotevent_data pe;
   char dummy[8];
   plc_var_t v;
   msg_plc_var_config_t *c;
@@ -1620,16 +1573,11 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
       for (i=0; i<(sizeof(cmd.data)/16) && p != NULL; i++) //dont use while(p) to safeguard against malformed data. Max size of var packet is 11 (we use 16, that makes a maximum of 12 vars in one msg )
       {
         p = get_plc_var(p, &v);
-        LOG_DEBUG("get var i=%d, var number %d \n", i, v.number);
         if (v.number < _internals.variables_count)
         {
           //queue event
           pe.cmd = 0x1; //get var event
-
-          pe.p1 = SET_VAR_LEN(v.length);
-          pe.p1 |= SET_VAR_SUB(v.subvalue);
-          pe.p2 = v.number;
-
+          pe.sub = v.subvalue;
           memcpy(&pe.data, v.value, sizeof(pe.data));
           if (kfifo_put(&_internals.event_state.events, pe) != 0)
           {
@@ -1661,11 +1609,11 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
     {
       switch(c->config)
       {
-        case 2: 
+        case 1: 
           _internals.variables[c->number]->subscribed = c->value > 0 ? true : false;
           _internals.variables[c->number]->is_subscribed_updated = true;
           break;
-        case 3: 
+        case 2: 
           _internals.variables[c->number]->forced = c->value > 0 ? true : false;
           _internals.variables[c->number]->is_forced_updated = true;
           break;
@@ -1684,12 +1632,12 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
 
     /* we're receiving the answer to the plc_state_get command */
   case pilot_cmd_type_plc_state_get:
-    _internals.state = (pilot_plc_state_t)cmd.data[(int32_t)pilot_plc_state_index];
+    _internals.state = (pilot_plc_state_t)cmd.data[(int)pilot_plc_state_index];
     mb();
     _internals.is_state_updated = 1;
 
     pe.cmd = 0x10;
-    memcpy(&pe.data, (void*)&_internals.state, sizeof(int32_t));
+    memcpy(&pe.data, (void*)&_internals.state, sizeof(int));
     if (kfifo_put(&_internals.event_state.events, pe) != 0)
     {
 		  wake_up_poll(&_internals.event_state.wait, EPOLLIN);
@@ -1727,32 +1675,6 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
       ret = pilot_cmd_handler_status_handled;
     }
   break;
-
-  case pilot_cmd_type_module_status_get:
-    pe.cmd = 0x11;
-
-    memcpy(pe.data, cmd.data, sizeof(pe.data));
-
-    if (kfifo_put(&_internals.event_state.events, pe) != 0)
-    {
-		  wake_up_poll(&_internals.event_state.wait, EPOLLIN);
-    }
-
-    /* mark the command as handled */
-    ret = pilot_cmd_handler_status_handled;
-    break;
-  case pilot_cmd_type_module_status_set:
-    pe.cmd = 0x11;
-    
-    memcpy(pe.data, cmd.data, sizeof(pe.data));
-
-    if (kfifo_put(&_internals.event_state.events, pe) != 0)
-    {
-		  wake_up_poll(&_internals.event_state.wait, EPOLLIN);
-    }
-    /* mark the command as handled */
-    ret = pilot_cmd_handler_status_handled;
-    break;
 
     default: ret = pilot_cmd_handler_status_ignored;  break;
   }
