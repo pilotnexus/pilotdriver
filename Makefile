@@ -58,6 +58,9 @@ package:
 	sed "s/\[PACKAGENAME\]/pilot-$(fullkernel)/" $(PACKAGEDIR)/control.template | sed "s/\[VERSION\]/$(VERSION)/" > $(PACKAGEDIR)/debian/DEBIAN/control; \
 	fakeroot dpkg -b $(PACKAGEDIR)/debian $(DEBDIR)/pilot-$(fullkernel).deb; \
 
+install:
+	dpkg -i $(DEBDIR)/pilot-$(fullkernel).deb; \
+
 help:
 	@echo "Cross-compile for version ${VERSION}"
 	@echo ""
