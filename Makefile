@@ -12,7 +12,8 @@ KERNEL_VER_LIST := $(shell ls -1vd $(KERNEL_HEADER_ROOT)/* 2> /dev/null | grep l
 PACKAGEDIR:="$(OUT_DIR)/build/package"
 MODULESDIR:="$(PACKAGEDIR)/debian/lib/modules"
 OVERLAYSDIR:="$(PACKAGEDIR)/debian/boot/overlays"
-DEBDIR:="$(OUT_DIR)/deb"
+DEB:="deb"
+DEBDIR:="$(OUT_DIR)/$(DEB)"
 VERSION:=$(shell cat version)
 
 bold=$(shell tput bold)
@@ -33,8 +34,7 @@ local:
 	echo "Building Pilot Kernel Drivers for $(fullkernel)"
 	- rm -rf $(OUT_DIR)/bin/$(fullkernel)/*
 	- mkdir -p $(OUT_DIR)/bin/$(fullkernel)
-	cd src/driver && make local && cd ..
-	@for x in $(DRIVER_LIST); do cd $$x && make local && cp $(PWD)/$$x/*.ko $(OUT_DIR)/bin/$(fullkernel)/ && cd ..; done
+	@for x in $(DRIVER_LIST); do cd src/$$x && make local && cp $(PWD)/src/$$x/*.ko $(OUT_DIR)/bin/$(fullkernel)/ && cd ../..; done
 
 load:
 	$(eval UNLOAD_DRIVER_NAMES_LIST = $(call reverse,$(DRIVER_NAMES_LIST)))
@@ -56,10 +56,11 @@ package:
 	mkdir -p $(OVERLAYSDIR); \
 	cp rpi_files/pilot.dtbo $(OVERLAYSDIR); \
 	sed "s/\[PACKAGENAME\]/pilot-$(fullkernel)/" $(PACKAGEDIR)/control.template | sed "s/\[VERSION\]/$(VERSION)/" > $(PACKAGEDIR)/debian/DEBIAN/control; \
+	mkdir -p $(DEBDIR); \
 	fakeroot dpkg -b $(PACKAGEDIR)/debian $(DEBDIR)/pilot-$(fullkernel).deb; \
 
 install:
-	dpkg -i $(DEBDIR)/pilot-$(fullkernel).deb; \
+	dpkg -i $(DEB)/pilot-$(fullkernel).deb; \
 
 help:
 	@echo "Cross-compile for version ${VERSION}"
