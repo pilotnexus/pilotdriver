@@ -759,17 +759,17 @@ static int pilot_plc_proc_var_subscribed_show(struct seq_file *file, void *data)
 
 static ssize_t pilot_plc_proc_var_subscribed_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
-  int ret;
-  bool new_value;
+  int ret = -EINVAL;
+  int new_value;
   pilot_plc_variable_t *variable = (pilot_plc_variable_t *)PDE_DATA(file->f_inode);
 
   /* try to get an int value from the user */
-  if (kstrtobool_from_user(buf, count, &new_value) != SUCCESS)
+  if (kstrtoint_from_user(buf, count, 10, &new_value) != SUCCESS)
     ret = -EINVAL; /* return an error if the conversion fails */
-  else
+  else if (new_value >= 0 && new_value < 3)
   {
     /* send a plc state set cmd to the pilot */
-    if (pilot_plc_try_set_variable_config(variable, 0x2, new_value ? 1 : 0, 200) == SUCCESS)
+    if (pilot_plc_try_set_variable_config(variable, 0x2, new_value, 200) == SUCCESS)
       ret = count;
     else
       ret = -EINVAL;
