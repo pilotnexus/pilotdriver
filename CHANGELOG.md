@@ -7,3 +7,4 @@
 2.0.7 - ignore SPI dummy frame from slave
 2.0.8 - PLC virt filesystem changes, support for uart_mode 0/1
 2.2.1 - copy_to_user in pilot_plc_proc_var_read() introduced
+2.2.2 - aio20 module now has afe0_3/afe4_7/afe8_11/afe12_15 to display analog frontend type (0-10V/4-20mA/PT-1000)

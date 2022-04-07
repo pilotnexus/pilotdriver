@@ -1076,7 +1076,7 @@ static void pilot_io_proc_deinit_ai8_module(module_slot_t slot)
   }
 }
 
-static char* pilot_io_proc_aio20_names[] = { "io0", "io1", "io2", "io3", "io4", "io5", "io6", "io7", "io8", "io9", "io10", "io11", "io12", "io13", "io14", "io15", "io16", "io17", "io18", "io19" };
+static char* pilot_io_proc_aio20_names[] = { "io0", "io1", "io2", "io3", "io4", "io5", "io6", "io7", "io8", "io9", "io10", "io11", "io12", "io13", "io14", "io15", "afe0_3", "afe4_7", "afe8_11", "afe12_15" };
 
 static void pilot_io_proc_init_aio20_module(module_slot_t slot)
 {
@@ -1265,6 +1265,18 @@ static const struct proc_ops proc_pilot_module_ai8_fops = {
   .proc_release = single_release
 };
 
+static void print_afe(struct seq_file *file, uint value)
+{
+  if (value > 4000)
+    seq_printf(file, "4-20mA");
+  else if (value > 980 && value < 1180)
+    seq_printf(file, "0-10V");
+  else if (value > 2060 && value < 2260)
+    seq_printf(file, "PT-1000");
+  else
+    seq_printf(file, "none");
+}
+
 static int pilot_io_proc_pilot_module_aio20_show(struct seq_file *file, void *data)
 {
   /* get the module index and counter index from the data */
@@ -1280,7 +1292,10 @@ static int pilot_io_proc_pilot_module_aio20_show(struct seq_file *file, void *da
   else
   {
     gpio_module = &_internals.gpio_modules[aio20_info->module_index];
-    seq_printf(file, "%llu", gpio_module->gpio_states[aio20_info->io_index]);
+    if (aio20_info->io_index < 16)
+      seq_printf(file, "%llu", gpio_module->gpio_states[aio20_info->io_index]);
+    else
+      print_afe(file, gpio_module->gpio_states[aio20_info->io_index]);
     ret = 0;
   }
 
