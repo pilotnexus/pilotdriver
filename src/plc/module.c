@@ -433,9 +433,10 @@ void debug_print_var_line(int number, enum iecvarclass type, enum iectypes iecva
 
 static ssize_t pilot_plc_proc_var_read(struct file *filep, char __user *buf, size_t count, loff_t *ppos)
 {
-  unsigned int copied=0;
+  unsigned int copied=0, not_copied;
   int ret = 0;
   char varbuf[MSG_PLC_VAR_MAX_LEN];
+  char conv_buf[CONV_BUF_LEN]; 
 
   pilot_plc_variable_t *variable = (pilot_plc_variable_t *)filep->private_data;
 
@@ -474,7 +475,9 @@ static ssize_t pilot_plc_proc_var_read(struct file *filep, char __user *buf, siz
       return -ERESTARTSYS;
     //ret = kfifo_to_user(&variable->fifo, buf, count, &copied);
     ret = kfifo_out(&variable->fifo, varbuf, MSG_PLC_VAR_MAX_LEN);
-    copied = raw_IEC_to_string(variable->iectype, varbuf, get_IEC_size(variable->iectype), buf, count);
+    copied = raw_IEC_to_string(variable->iectype, varbuf, get_IEC_size(variable->iectype), conv_buf, CONV_BUF_LEN);
+    not_copied = copy_to_user(buf, conv_buf, copied);
+    //TODO - handle if not_copied > 0
 
     LOG_DEBUG("raw_IEC_to_string (raw: %x%x%x%x%x%x%x%x '%.*s'), copied bytes: %i", varbuf[0],varbuf[1],varbuf[2],varbuf[3],varbuf[4],varbuf[5],varbuf[6],varbuf[7],copied, buf, copied);
 
@@ -493,7 +496,7 @@ static ssize_t pilot_plc_proc_var_read(struct file *filep, char __user *buf, siz
     } while (copied == 0);
   }   
 
-  LOG_DEBUG("Returning from pilot_plc_proc_var_read() with %i", copied);
+  LOG_DEBUG("Returning from pilot_plc_proc_var_read() with %i copied bytes", copied);
   return copied;
 }
 

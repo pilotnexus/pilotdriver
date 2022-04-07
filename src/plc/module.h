@@ -22,6 +22,8 @@ MODULE_DESCRIPTION("PiloT PLC kernel module");
 #define MSG_PLC_VAR_HEADER_LEN 3 //opt + number size
 #define MSG_PLC_VAR_MAX_LEN 8
 
+#define CONV_BUF_LEN 24 //max length to hold at least u64 string (18446744073709551615) 
+
 typedef struct __attribute__((__packed__)) {
   uint8_t config;
   uint16_t number;
