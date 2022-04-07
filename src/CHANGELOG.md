@@ -1,1 +1,0 @@
-v2.1.7: copy_to_user in pilot_plc_proc_var_read() introduced

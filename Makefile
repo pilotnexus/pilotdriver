@@ -1,13 +1,10 @@
-OUT_DIR = $(PWD)/..
+OUT_DIR = $(PWD)
 DRIVER_LIST = driver io plc rtc slcd tty fpga
 DRIVER_NAMES_LIST = pilot pilot_io pilot_plc pilot_rtc pilot_slcd pilot_tty pilot_fpga
 
-PREFIX = $(PWD)/../build/tools/arm-bcm2708/arm-bcm2708-linux-gnueabi/bin/arm-bcm2708-linux-gnueabi-
-ifneq ($(shell $(PREFIX)gcc --version >/dev/null 2>&1; echo $$?),0)
-	PREFIX = $(PWD)/../build/tools/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64/bin/arm-linux-gnueabihf-
-endif
+PREFIX = arm-linux-gnueabihf-
 
-KERNEL_HEADER_ROOT := $(PWD)/../build/rpi
+KERNEL_HEADER_ROOT := $(PWD)/build/rpi
 
 KERNEL_DIR_LIST := $(shell ls -1vd $(KERNEL_HEADER_ROOT)/* 2> /dev/null | grep linux-rpi)
 KERNEL_VER_LIST := $(shell ls -1vd $(KERNEL_HEADER_ROOT)/* 2> /dev/null | grep linux-rpi | awk '{ sub(/.*linux-rpi-/,""); print }')
@@ -15,7 +12,8 @@ KERNEL_VER_LIST := $(shell ls -1vd $(KERNEL_HEADER_ROOT)/* 2> /dev/null | grep l
 PACKAGEDIR:="$(OUT_DIR)/build/package"
 MODULESDIR:="$(PACKAGEDIR)/debian/lib/modules"
 OVERLAYSDIR:="$(PACKAGEDIR)/debian/boot/overlays"
-DEBDIR:="$(OUT_DIR)/deb"
+DEB:="deb"
+DEBDIR:="$(OUT_DIR)/$(DEB)"
 VERSION:=$(shell cat version)
 
 bold=$(shell tput bold)
@@ -36,8 +34,7 @@ local:
 	echo "Building Pilot Kernel Drivers for $(fullkernel)"
 	- rm -rf $(OUT_DIR)/bin/$(fullkernel)/*
 	- mkdir -p $(OUT_DIR)/bin/$(fullkernel)
-	cd driver && make local && cd ..
-	@for x in $(DRIVER_LIST); do cd $$x && make local && cp $(PWD)/$$x/*.ko $(OUT_DIR)/bin/$(fullkernel)/ && cd ..; done
+	@for x in $(DRIVER_LIST); do cd src/$$x && make local && cp $(PWD)/src/$$x/*.ko $(OUT_DIR)/bin/$(fullkernel)/ && cd ../..; done
 
 load:
 	$(eval UNLOAD_DRIVER_NAMES_LIST = $(call reverse,$(DRIVER_NAMES_LIST)))
@@ -59,7 +56,11 @@ package:
 	mkdir -p $(OVERLAYSDIR); \
 	cp rpi_files/pilot.dtbo $(OVERLAYSDIR); \
 	sed "s/\[PACKAGENAME\]/pilot-$(fullkernel)/" $(PACKAGEDIR)/control.template | sed "s/\[VERSION\]/$(VERSION)/" > $(PACKAGEDIR)/debian/DEBIAN/control; \
+	mkdir -p $(DEBDIR); \
 	fakeroot dpkg -b $(PACKAGEDIR)/debian $(DEBDIR)/pilot-$(fullkernel).deb; \
+
+install:
+	dpkg -i $(DEB)/pilot-$(fullkernel).deb; \
 
 help:
 	@echo "Cross-compile for version ${VERSION}"
@@ -91,7 +92,7 @@ xc_$(1):
 	- mkdir $(OUT_DIR)/bin
 	- rm -R $(OUT_DIR)/bin/$(1)
 	mkdir $(OUT_DIR)/bin/$(1)
-	- $(foreach DRV,$(DRIVER_LIST),cd $(PWD)/$(DRV) && make xc_$(1) && cp $(PWD)/$(DRV)/*.ko $(OUT_DIR)/bin/$(1);)
+	- $(foreach DRV,$(DRIVER_LIST),cd $(PWD)/src/$(DRV) && make xc_$(1) && cp $(PWD)/src/$(DRV)/*.ko $(OUT_DIR)/bin/$(1);)
 	@if [ `ls -1 $(OUT_DIR)/bin/$(1) | wc -l` -ne $(words $(DRIVER_NAMES_LIST)) ]; then \
 	echo "not all driver files compiled. please check $(OUT_DIR)/bin/$(1) for missing kernel drivers"; \
 	else \

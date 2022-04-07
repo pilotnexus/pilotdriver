@@ -6,3 +6,4 @@
 2.0.6 - set init_uart_clock to 48MHz instead of 3MHz to support higher baudrates
 2.0.7 - ignore SPI dummy frame from slave
 2.0.8 - PLC virt filesystem changes, support for uart_mode 0/1
+2.2.1 - copy_to_user in pilot_plc_proc_var_read() introduced

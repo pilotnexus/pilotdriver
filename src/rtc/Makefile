@@ -22,7 +22,7 @@ xc_$(1):
 	@echo "BUILDING RTC DRIVER ${BUILD_MSG}" 
 	make -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(PWD) clean
 	cp $(BASE_DRV_SRC)/Module.symvers $(PWD)
-	$(KCPPFLAGS) make ARCH=arm CROSS_COMPILE=$(PREFIX) -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(PWD) modules
+	$(KCPPFLAGS) make ARCH=arm CROSS_COMPILE=$(PREFIX) -C $(filter %$(1),$(KERNEL_DIR_LIST)) M=$(PWD) modules KBUILD_EXTRA_SYMBOLS=`pwd`/../driver/Module.symvers
 	
 endef
 
