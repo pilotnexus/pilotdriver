@@ -243,7 +243,7 @@ static int pilot_rtc_get_time(struct device* dev, struct rtc_time *t)
 
   if (timedout)
   {
-    LOG_INFO("pilot_rtc_get_time() timeout reached while waiting for rtc_get request");
+    LOG_DEBUG("pilot_rtc_get_time() timeout reached while waiting for rtc_get request");
   }
   else
   {

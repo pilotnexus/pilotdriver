@@ -1,7 +1,7 @@
 #!/bin/sh
 ### BEGIN INIT INFO
 # Provides: pilot-config
-# Required-Start: udev mountkernfs $remote_fs
+# Required-Start: udev mountkernfs pilot $remote_fs
 # Required-Stop:
 # Default-Start: S 2 3 4 5
 # Default-Stop:
@@ -16,7 +16,7 @@ case "$1" in
     log_daemon_msg "Checking if PLC variables are present"
     if [ -e /etc/pilot/variables ]; then
       printf " Yes. Loading variables"
-      cp /etc/pilot/variables /proc/pilot/plc/varconf/variables
+      cp /etc/pilot/variables /proc/pilot/plc/varconfig
       log_end_msg 0
     else
       log_end_msg 0

@@ -1196,7 +1196,7 @@ static int pilot_try_get_module_type(int module_index, int timeout, pilot_module
   if (WAIT_EVENT_INTERRUPTIBLE_TIMEOUT(_internals.modules[module_index].type_is_updated_wq, _internals.modules[module_index].type_is_updated != 0, (timeout * HZ / 1000)) <= 0)
   {
     is_timedout = 1;    
-    LOG_INFO("pilot_try_get_module_type() timedout while waiting for module_type!");
+    LOG_DEBUG("pilot_try_get_module_type() timedout while waiting for module_type!");
     *type = NULL;
   }
   else
@@ -1230,7 +1230,7 @@ static int pilot_try_get_module_uid(int module_index, int timeout, pilot_eeprom_
     if (WAIT_EVENT_INTERRUPTIBLE_TIMEOUT(_internals.modules[module_index].uid_is_updated_wq, _internals.modules[module_index].uid_is_updated != 0, (timeout * HZ / 1000)) <= 0)
   {
     timedout = 1;
-    LOG_INFO("pilot_try_get_module_uid() timeout reached while waiting for uid!");
+    LOG_DEBUG("pilot_try_get_module_uid() timeout reached while waiting for uid!");
   }
   else
   {
@@ -1262,7 +1262,7 @@ static int pilot_try_get_module_hid(int module_index, int timeout, pilot_eeprom_
   if (WAIT_EVENT_INTERRUPTIBLE_TIMEOUT(_internals.modules[module_index].hid_is_updated_wq, _internals.modules[module_index].hid_is_updated != 0, (timeout * HZ / 1000)) <= 0)
   {
     timedout = 1;
-    LOG_INFO("pilot_try_get_module_hid() timeout reached while waiting for hid!");
+    LOG_DEBUG("pilot_try_get_module_hid() timeout reached while waiting for hid!");
   }
   else
   {
@@ -1294,7 +1294,7 @@ static int pilot_try_get_module_fid(int module_index, int timeout, pilot_eeprom_
   if (WAIT_EVENT_INTERRUPTIBLE_TIMEOUT(_internals.modules[module_index].fid_is_updated_wq, _internals.modules[module_index].fid_is_updated != 0, (timeout * HZ / 1000)) <= 0)
   {
     timedout = 1;
-    LOG_INFO("pilot_try_get_module_fid() timeout reached while waiting for fid!");
+    LOG_DEBUG("pilot_try_get_module_fid() timeout reached while waiting for fid!");
   }
   else
   {
@@ -1327,7 +1327,7 @@ static int pilot_try_get_module_eeprom_data(int module_index, int user_data_inde
   if (WAIT_EVENT_INTERRUPTIBLE_TIMEOUT(_internals.modules[module_index].user_is_updated_wq[user_data_index], _internals.modules[module_index].user_is_updated[user_data_index] != 0, (timeout * HZ / 1000)) <= 0)
   {
     timedout = 1;
-    LOG_INFO("pilot_try_get_module_eeprom_data() timeout reached while waiting for data!");
+    LOG_DEBUG("pilot_try_get_module_eeprom_data() timeout reached while waiting for data!");
   }
   else
   {
