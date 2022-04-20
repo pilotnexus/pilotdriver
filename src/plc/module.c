@@ -797,7 +797,7 @@ static int pilot_plc_proc_var_forced_show(struct seq_file *file, void *data)
 
 static ssize_t pilot_plc_proc_var_forced_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
-  int ret = -EINVAL, waitret;
+  int ret = -EINVAL;
   bool new_value;
   pilot_plc_variable_t *variable = (pilot_plc_variable_t *)PDE_DATA(file->f_inode);
 
@@ -807,12 +807,10 @@ static ssize_t pilot_plc_proc_var_forced_write(struct file *file, const char __u
   else
   {
     /* send a plc state set cmd to the pilot */
-    waitret = pilot_plc_try_set_variable_config(variable, 0x3, new_value ? 1 : 0, 200);
-
-    if (waitret == 0 || waitret == -ERESTARTSYS)
-      ret = -EINVAL;
+    if (pilot_plc_try_set_variable_config(variable, 0x3, new_value ? 1 : 0, 200) == SUCCESS)
+      ret = count;
     else
-      ret = count; /* we processed the complete input */
+      ret = -EINVAL;
   }
   return ret;
 }
@@ -827,28 +825,78 @@ static int pilot_plc_proc_var_forced_open(struct inode *inode, struct file *file
 
 static int pilot_plc_proc_var_force_value_show(struct seq_file *file, void *data)
 {
+  int is_timedout = 0;
+  int timeout = 100;
+  unsigned long timestamp;
+  char conv_buf[CONV_BUF_LEN]; 
 
-  return 0;
+  pilot_plc_variable_t *variable = (pilot_plc_variable_t *)file->private;
+ 
+  variable->is_force_value_updated = false;
+  pilot_plc_send_get_variable_cmd(variable, 0x3); //get forced value
+
+  /* pick a time that is timeout ms in the future */
+  timestamp = jiffies + (timeout * HZ / 1000);
+ 
+  /* wait until the state is updated or the timeout occurs */
+  while (variable->is_force_value_updated == false)
+    if (time_after(jiffies, timestamp))
+    {
+      is_timedout = 1;
+      break;
+    }
+
+  /* read the updated state */
+  if (!is_timedout)
+  {
+
+    raw_IEC_to_string(variable->iectype, variable->force_value, get_IEC_size(variable->iectype), conv_buf, CONV_BUF_LEN);
+    seq_printf(file, "%s", conv_buf);
+  }
+  else
+  {
+    //LOG_INFO("pilot_plc_proc_var_force_value_show() timedout while waiting for forced value!");
+  }
+
+  return is_timedout ? -1 : SUCCESS;
 }
 
 static ssize_t pilot_plc_proc_var_force_value_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
-  int new_value, ret;
-  //pilot_plc_variable_t *variable = (pilot_plc_variable_t *)PDE_DATA(file->f_inode);
+  int ret = -EINVAL;
+  char value[MSG_PLC_VAR_MAX_LEN];
+  int index = 0;
+  int waitret;
 
-  /* try to get an int value from the user */
-  if (kstrtoint_from_user(buf, count, 10, &new_value) != SUCCESS)
-    ret = -EINVAL; /* return an error if the conversion fails */
-  else
-  {
-    /* send a plc state set cmd to the pilot */
-    if (new_value == 0){
-    }
-    else if (new_value == 1) {
-    }
+  pilot_plc_variable_t *variable = (pilot_plc_variable_t *)PDE_DATA(file->f_inode);
 
-    ret = count; /* we processed the complete input */
-  }
+  if (!variable)
+    return -EINVAL;
+
+  LOG_DEBUG("pilot_plc_proc_var_force_value_write() called with count=%i", count);
+
+    /* try to get an int value from the user */
+      //change to copy_from_user(msg,buf,count) for more generic use
+
+    if (string_to_IEC_from_user(variable->iectype, &buf[index], count-index, value, MSG_PLC_VAR_MAX_LEN) != -EINVAL)
+    {
+      /* send a plc state set cmd to the pilot */ 
+      //LOG_DEBUG("writing variable %i to plc. new value %i\n", variable->number, new_value);
+    
+      pilot_plc_send_set_variable_cmd(variable->number, 0x3, value, get_IEC_size(variable->iectype));
+      LOG_DEBUG("wait_event_interruptible_timeout() after set_variable");
+      waitret = wait_event_interruptible_timeout(variable->in_queue, !kfifo_is_empty(&variable->fifo), (200 * HZ / 1000));
+      LOG_DEBUG("wait_event_interruptible_timeout() after set_variable returned with returnvalue %i\n", waitret);      
+      
+      if (waitret == 0 || waitret == -ERESTARTSYS)
+        ret = -EINVAL;
+      else
+        ret = count;
+    }
+    else
+    {
+      LOG_DEBUG("error parsing input\n");      
+    }
   return ret;
 }
 
@@ -1683,19 +1731,28 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
 
           LOG_DEBUG("received variable %d, subvalue %d: %02X %02X %02X %02X %02X %02X %02X %02X", v.number, v.subvalue,
             v.value[0], v.value[1], v.value[2], v.value[3], v.value[4], v.value[5], v.value[6], v.value[7]   );
-          if (kfifo_put(&_internals.event_state.events, pe) != 0)
-          {
-		        wake_up_poll(&_internals.event_state.wait, EPOLLIN | EPOLLPRI);
-          }
-           //now send to variable specific fifo
-          if (!mutex_lock_interruptible(&access_lock)) 
-          {
-            while (kfifo_avail(&_internals.variables[v.number]->fifo) < MSG_PLC_VAR_MAX_LEN)
-              ret = kfifo_out(&_internals.variables[v.number]->fifo, dummy, MSG_PLC_VAR_MAX_LEN); //get rid of old value when fifo is full
 
-            kfifo_in(&_internals.variables[v.number]->fifo,v.value, MSG_PLC_VAR_MAX_LEN);
-            mutex_unlock(&access_lock);
-            wake_up_poll(&_internals.variables[v.number]->in_queue, POLLIN | EPOLLPRI);
+          if (v.subvalue == 0x3) //force value
+          {
+            memcpy(_internals.variables[v.number]->force_value, v.value, MSG_PLC_VAR_MAX_LEN);
+            _internals.variables[v.number]->is_force_value_updated = true;
+          }
+          else 
+          {
+            if (kfifo_put(&_internals.event_state.events, pe) != 0)
+            {
+		          wake_up_poll(&_internals.event_state.wait, EPOLLIN | EPOLLPRI);
+            }
+             //now send to variable specific fifo
+            if (!mutex_lock_interruptible(&access_lock)) 
+            {
+              while (kfifo_avail(&_internals.variables[v.number]->fifo) < MSG_PLC_VAR_MAX_LEN)
+                ret = kfifo_out(&_internals.variables[v.number]->fifo, dummy, MSG_PLC_VAR_MAX_LEN); //get rid of old value when fifo is full
+
+              kfifo_in(&_internals.variables[v.number]->fifo,v.value, MSG_PLC_VAR_MAX_LEN);
+              mutex_unlock(&access_lock);
+              wake_up_poll(&_internals.variables[v.number]->in_queue, POLLIN | EPOLLPRI);
+            }
           }
         }
       }

@@ -72,7 +72,6 @@ typedef struct {
 
 #define MAX_CSV_COLS 6
 #define MAX_VAR_COLS 6
-#define MAX_VAR_DATA_LENGTH 8
 
 #define MAX_VAR_DIR_DEPTH 64
 
@@ -119,7 +118,8 @@ typedef struct {
   wait_queue_head_t in_queue;
   wait_queue_head_t out_queue;
   bool is_open;
-  char value[MAX_VAR_DATA_LENGTH];
+  char value[MSG_PLC_VAR_MAX_LEN];
+  char force_value[MSG_PLC_VAR_MAX_LEN];
   char *variable;     /* full path as string */
   char *variablename; /* points to the name part of the variable */
   pilot_plc_vardir_t *dir;

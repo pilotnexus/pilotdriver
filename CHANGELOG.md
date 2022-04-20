@@ -1,7 +1,7 @@
 **** CHANGELOG ****
+2.0.3 - Forced values
 2.0.2 - File permissions fix
 2.0.3 - Message length fix for tty enable commands
-2.0.4
 2.0.5 - Added demo module support
 2.0.6 - set init_uart_clock to 48MHz instead of 3MHz to support higher baudrates
 2.0.7 - ignore SPI dummy frame from slave
