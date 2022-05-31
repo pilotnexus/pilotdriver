@@ -412,11 +412,7 @@ uint32_t analyzecsvbuffer(const char *buf, int fsize, bool(*handleline)(int , en
             {
               //remove first variable segment CONFIG, so add the start index of second var segment
               //and remove the length of the first variable segment and one extra char for the separator
-<<<<<<< HEAD
               if (!(handleline(number, type, iecVar, &buf[col_start[2]+var_col_start[1]], col_length[2]-var_col_length[0]-1)))
-=======
-              if !(handleline(number, type, iecVar, &buf[col_start[2]+var_col_start[1]], col_length[2]-var_col_length[0]-1))
->>>>>>> 24b091f9275a0abc002865d286895d3cdba96dd7
 		return 0;
               if (number != maxnumber)
 	        return 0; //numbers need to be continous.
