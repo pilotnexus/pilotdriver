@@ -376,10 +376,9 @@ int toInt(const char *a, int length) {
   return n;
 }
 
-int analyzecsvbuffer(const char *buf, int fsize, void(*handleline)(int , enum iecvarclass, enum iectypes, const char *, int ))
+uint32_t analyzecsvbuffer(const char *buf, int fsize, bool(*handleline)(int , enum iecvarclass, enum iectypes, const char *, int ))
 {
   int index = 0;
-  //int lines = 0;
   int maxnumber = 0;
   int col_start[MAX_CSV_COLS];
   int col_length[MAX_CSV_COLS];
@@ -413,10 +412,12 @@ int analyzecsvbuffer(const char *buf, int fsize, void(*handleline)(int , enum ie
             {
               //remove first variable segment CONFIG, so add the start index of second var segment
               //and remove the length of the first variable segment and one extra char for the separator
-              handleline(number, type, iecVar, &buf[col_start[2]+var_col_start[1]], col_length[2]-var_col_length[0]-1);
+              if (!(handleline(number, type, iecVar, &buf[col_start[2]+var_col_start[1]], col_length[2]-var_col_length[0]-1)))
+		return 0;
+              if (number != maxnumber)
+	        return 0; //numbers need to be continous.
+              maxnumber++;
             }
-            if (maxnumber < number)
-              maxnumber = number;
           }
         }
       }
@@ -425,10 +426,11 @@ int analyzecsvbuffer(const char *buf, int fsize, void(*handleline)(int , enum ie
   return maxnumber;
 }
 
-void debug_print_var_line(int number, enum iecvarclass type, enum iectypes iecvar, const char *variable, int varLength)
+bool debug_print_var_line(int number, enum iecvarclass type, enum iectypes iecvar, const char *variable, int varLength)
 {
   //add debug if wanted
   LOG_DEBUGALL("variable nr: %i:  '%.*s'\n", number, varLength, variable);
+  return true;
 }
 
 static ssize_t pilot_plc_proc_var_read(struct file *filep, char __user *buf, size_t count, loff_t *ppos)
@@ -1017,7 +1019,7 @@ pilot_plc_vardir_t * create_path(pilot_plc_vardir_t *parent, char* name) {
   return path;
 }
 
-void malloc_var(int number, enum iecvarclass type, enum iectypes iecvar, const char *variable, int varLength)
+bool malloc_var(int number, enum iecvarclass type, enum iectypes iecvar, const char *variable, int varLength)
 {
   int i;
   int ret;
@@ -1038,6 +1040,7 @@ void malloc_var(int number, enum iecvarclass type, enum iectypes iecvar, const c
   ret = kfifo_alloc(&_internals.variables[number]->fifo, FIFO_SIZE, GFP_KERNEL);
   if (ret) {
     LOG_DEBUG("ERROR kfifo_alloc for variable %i", number);
+    return false;
   }
 
   for (i = 0; i < varLength; i++)
@@ -1058,7 +1061,7 @@ void malloc_var(int number, enum iecvarclass type, enum iectypes iecvar, const c
       else {
         //ERROR, path depth too high
         LOG_DEBUG("ERROR path depth to high for plc variable");
-        return;
+        return false;
       }
     }
   }
@@ -1076,7 +1079,7 @@ void malloc_var(int number, enum iecvarclass type, enum iectypes iecvar, const c
   proc_create_data(proc_plc_var_subscribed, 0666, vardir, &proc_plc_variable_subscribed_fops, _internals.variables[number]);
   proc_create_data(proc_plc_var_forced, 0666, vardir, &proc_plc_variable_forced_fops, _internals.variables[number]);
   proc_create_data(proc_plc_var_force_value, 0666, vardir, &proc_plc_variable_force_value_fops, _internals.variables[number]);
-
+  return true;
 }
 
 void freevariables(void)
@@ -1258,12 +1261,13 @@ static int pilot_plc_proc_variables_state_open(struct inode *inode, struct file 
 
 static ssize_t pilot_plc_proc_variables_state_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
+  uint32_t varcount = 0;
   //first remove all variables if existent
   freevariables();
 
-  _internals.variables_count = analyzecsvbuffer(buf, count, debug_print_var_line) + 1; //read variables and store max var number plus one (var numbers are zero based)
+  varcount = analyzecsvbuffer(buf, count, debug_print_var_line) + 1; //read variables and store max var number plus one (var numbers are zero based)
 
-  if (_internals.variables_count > 0)
+  if (varcount > 0)
   {
     LOG_DEBUG("creating vars directory");
     _internals.proc_pilot_plc_vars_dir_root.parent = NULL;
@@ -1276,7 +1280,7 @@ static ssize_t pilot_plc_proc_variables_state_write(struct file *file, const cha
     _internals.variables = (pilot_plc_variable_t **)kzalloc(_internals.variables_count * sizeof(pilot_plc_variable_t *), __GFP_NOFAIL | __GFP_IO | __GFP_FS);
   
     //define vars
-    analyzecsvbuffer(buf, count, malloc_var);
+    _internals.variables_count = analyzecsvbuffer(buf, count, malloc_var);
   }
  
   LOG_DEBUG("creating variables done, %i bytes read from variable.csv input", count);

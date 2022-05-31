@@ -148,6 +148,6 @@ typedef struct {
   struct proc_dir_entry *proc_pilot_plc_dir;
   pilot_plc_vardir_t proc_pilot_plc_vars_dir_root;
   pilot_plc_variable_t **variables;
-  int variables_count;
+  uint32_t variables_count;
   struct pilotevent_state event_state;
 } internals_t;
