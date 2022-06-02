@@ -1277,7 +1277,7 @@ static ssize_t pilot_plc_proc_variables_state_write(struct file *file, const cha
     _internals.proc_pilot_plc_vars_dir_root.self = proc_mkdir_mode(proc_plc_vars_name, 0, _internals.proc_pilot_plc_dir);
 
     //initialize pointer array
-    _internals.variables = (pilot_plc_variable_t **)kzalloc(_internals.variables_count * sizeof(pilot_plc_variable_t *), __GFP_NOFAIL | __GFP_IO | __GFP_FS);
+    _internals.variables = (pilot_plc_variable_t **)kzalloc(varcount * sizeof(pilot_plc_variable_t *), __GFP_NOFAIL | __GFP_IO | __GFP_FS);
   
     //define vars
     _internals.variables_count = analyzecsvbuffer(buf, count, malloc_var);
