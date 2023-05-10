@@ -55,7 +55,6 @@ struct pilotevent_state {
 	struct mutex read_lock;
 };
 
-struct mutex access_lock;
 
 typedef struct {
   uint16_t min;
@@ -131,6 +130,7 @@ typedef struct {
   volatile bool is_subscribed_updated;
   volatile bool is_forced_updated;
   struct kfifo_rec_ptr_1 fifo;
+  struct mutex access_lock;
 } pilot_plc_variable_t;
 
 /* struct that groups internal members */

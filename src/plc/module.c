@@ -473,7 +473,7 @@ static ssize_t pilot_plc_proc_var_read(struct file *filep, char __user *buf, siz
                 return ret;
       }
 
-    if (mutex_lock_interruptible(&access_lock))
+    if (mutex_lock_interruptible(&variable->access_lock))
       return -ERESTARTSYS;
     //ret = kfifo_to_user(&variable->fifo, buf, count, &copied);
     ret = kfifo_out(&variable->fifo, varbuf, MSG_PLC_VAR_MAX_LEN);
@@ -484,7 +484,7 @@ static ssize_t pilot_plc_proc_var_read(struct file *filep, char __user *buf, siz
     LOG_DEBUG("raw_IEC_to_string (raw: %x%x%x%x%x%x%x%x '%.*s'), copied bytes: %i", varbuf[0],varbuf[1],varbuf[2],varbuf[3],varbuf[4],varbuf[5],varbuf[6],varbuf[7],copied, buf, copied);
 
     variable->is_variable_updated = true;
-    mutex_unlock(&access_lock);
+    mutex_unlock(&variable->access_lock);
 
     /*
      * If we couldn't read anything from the fifo (a different
@@ -510,7 +510,7 @@ static int pilot_plc_proc_var_open(struct inode *inode, struct file *file)
   if (variable->is_open)
     return -EBUSY; /* already open */
 
-  if (mutex_lock_interruptible(&access_lock))
+  if (mutex_lock_interruptible(&variable->access_lock))
     return -ERESTARTSYS;
 
   kfifo_reset(&variable->fifo);
@@ -519,7 +519,7 @@ static int pilot_plc_proc_var_open(struct inode *inode, struct file *file)
   variable->is_poll = false;
   file->private_data = variable;
 
-  mutex_unlock(&access_lock);
+  mutex_unlock(&variable->access_lock);
   
   LOG_DEBUG("plc variable file %s open, flags=%X\n", variable->variable, file->f_flags);
   return 0;
@@ -587,13 +587,13 @@ static int pilot_plc_proc_var_release(struct inode * inode, struct file * file)
 {
   pilot_plc_variable_t *variable = (pilot_plc_variable_t *)PDE_DATA(file->f_inode);
 
-  if (mutex_lock_interruptible(&access_lock))
+  if (mutex_lock_interruptible(&variable->access_lock))
     LOG_DEBUG("mutex lock cancelled");
 
   variable->is_open = false;
   variable->is_variable_updated = false; //return from waiting handlers
 
-  mutex_unlock(&access_lock);
+  mutex_unlock(&variable->access_lock);
   //pilot_plc_proc_var_fasync(-1, file, 0);
 
   LOG_DEBUG("plc variable file %s release\n", variable->variable);
@@ -1029,6 +1029,7 @@ bool malloc_var(int number, enum iecvarclass type, enum iectypes iecvar, const c
   struct proc_dir_entry *vardir;
 
   //add debug if wanted
+  mutex_init(&_internals.variables[number]->access_lock);
   _internals.variables[number] = (pilot_plc_variable_t *)kzalloc(sizeof(pilot_plc_variable_t), __GFP_NOFAIL | __GFP_IO | __GFP_FS);
   _internals.variables[number]->number = number;
   _internals.variables[number]->varclass = type;
@@ -1708,7 +1709,7 @@ static uint8_t *get_plc_var(uint8_t *data, plc_var_t *out) {
 /* the command callback handler */
 static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
 {
-  pilot_cmd_handler_status_t ret;
+  pilot_cmd_handler_status_t ret = pilot_cmd_handler_status_ignored;
   struct pilotevent_data pe;
   char dummy[MSG_PLC_VAR_MAX_LEN];
   plc_var_t v;
@@ -1726,7 +1727,7 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
       for (i=0; i<(sizeof(cmd.data)/16) && p != NULL; i++) //dont use while(p) to safeguard against malformed data. Max size of var packet is 11 (we use 16, that makes a maximum of 12 vars in one msg )
       {
         p = get_plc_var(p, &v);
-        if (v.number < _internals.variables_count)
+        if (v.number < _internals.variables_count && p != NULL)
         {
           //queue event
           pe.cmd = 0x1; //get var event
@@ -1736,28 +1737,53 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
           LOG_DEBUG("received variable %d, subvalue %d: %02X %02X %02X %02X %02X %02X %02X %02X", v.number, v.subvalue,
             v.value[0], v.value[1], v.value[2], v.value[3], v.value[4], v.value[5], v.value[6], v.value[7]   );
 
-          if (v.subvalue == 0x3) //force value
+          if (!mutex_lock_interruptible(&_internals.variables[v.number]->access_lock)) 
           {
-            memcpy(_internals.variables[v.number]->force_value, v.value, MSG_PLC_VAR_MAX_LEN);
-            _internals.variables[v.number]->is_force_value_updated = true;
-          }
-          else 
-          {
-            if (kfifo_put(&_internals.event_state.events, pe) != 0)
+            if (v.subvalue == 0x3) //force value
             {
-		          wake_up_poll(&_internals.event_state.wait, EPOLLIN | EPOLLPRI);
+              memcpy(_internals.variables[v.number]->force_value, v.value, MSG_PLC_VAR_MAX_LEN);
+              _internals.variables[v.number]->is_force_value_updated = true;
             }
-             //now send to variable specific fifo
-            if (!mutex_lock_interruptible(&access_lock)) 
+            else 
             {
-              while (kfifo_avail(&_internals.variables[v.number]->fifo) < MSG_PLC_VAR_MAX_LEN)
-                ret = kfifo_out(&_internals.variables[v.number]->fifo, dummy, MSG_PLC_VAR_MAX_LEN); //get rid of old value when fifo is full
+              if (kfifo_put(&_internals.event_state.events, pe) != 0)
+              {
+		            wake_up_poll(&_internals.event_state.wait, EPOLLIN | EPOLLPRI);
+              }
+              else
+              {
+                  LOG_ERROR("FIFO is full, discarding new value for stream buffer");
+              }
 
-              kfifo_in(&_internals.variables[v.number]->fifo,v.value, MSG_PLC_VAR_MAX_LEN);
-              mutex_unlock(&access_lock);
-              wake_up_poll(&_internals.variables[v.number]->in_queue, POLLIN | EPOLLPRI);
+              if (kfifo_avail(&_internals.variables[v.number]->fifo) < MSG_PLC_VAR_MAX_LEN)
+              {
+                  // Try to remove an old value to make room
+                  ret = kfifo_out(&_internals.variables[v.number]->fifo, dummy, MSG_PLC_VAR_MAX_LEN);
+              
+                  // Check if there's enough room now
+                  if (kfifo_avail(&_internals.variables[v.number]->fifo) < MSG_PLC_VAR_MAX_LEN)
+                  {
+                      // Still not enough room, discard the new value
+                      LOG_ERROR("FIFO is full, discarding new value for variable number %i", v.number);
+                  }
+                  else
+                  {
+                      // There's enough room now, add the new value
+                      kfifo_in(&_internals.variables[v.number]->fifo,v.value, MSG_PLC_VAR_MAX_LEN);
+                      wake_up_poll(&_internals.variables[v.number]->in_queue, POLLIN | EPOLLPRI);
+                  }
+              }
+              else
+              {
+                  // There's enough room, add the new value
+                  kfifo_in(&_internals.variables[v.number]->fifo,v.value, MSG_PLC_VAR_MAX_LEN);
+                  wake_up_poll(&_internals.variables[v.number]->in_queue, POLLIN | EPOLLPRI);
+              }
             }
+
+            mutex_unlock(&_internals.variables[v.number]access_lock);
           }
+
         }
       }
       ret = pilot_cmd_handler_status_handled;
@@ -1923,8 +1949,6 @@ static int __init pilot_plc_init()
   int ret = -1;
 
   LOG_DEBUG("pilot_plc_init()");
-
-  mutex_init(&access_lock);
 
   //stream data init 
   mutex_init(&_internals.event_state.read_lock);
