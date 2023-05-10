@@ -1727,7 +1727,7 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
       for (i=0; i<(sizeof(cmd.data)/16) && p != NULL; i++) //dont use while(p) to safeguard against malformed data. Max size of var packet is 11 (we use 16, that makes a maximum of 12 vars in one msg )
       {
         p = get_plc_var(p, &v);
-        if (v.number < _internals.variables_count && p != NULL)
+        if (v.number < _internals.variables_count) //we don't need a p != NULL check here, p is only used in the line above and it is checked before by  the for loop condition
         {
           //queue event
           pe.cmd = 0x1; //get var event
