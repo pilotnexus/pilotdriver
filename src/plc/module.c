@@ -1029,11 +1029,11 @@ bool malloc_var(int number, enum iecvarclass type, enum iectypes iecvar, const c
   struct proc_dir_entry *vardir;
 
   //add debug if wanted
-  mutex_init(&_internals.variables[number]->access_lock);
   _internals.variables[number] = (pilot_plc_variable_t *)kzalloc(sizeof(pilot_plc_variable_t), __GFP_NOFAIL | __GFP_IO | __GFP_FS);
   _internals.variables[number]->number = number;
   _internals.variables[number]->varclass = type;
   _internals.variables[number]->iectype = iecvar;
+  mutex_init(&_internals.variables[number]->access_lock);
   init_waitqueue_head(&_internals.variables[number]->in_queue);
   _internals.variables[number]->variable = (char*)kzalloc(varLength+1 * sizeof(char), __GFP_NOFAIL | __GFP_IO | __GFP_FS);
   _internals.variables[number]->variablename = _internals.variables[number]->variable;
