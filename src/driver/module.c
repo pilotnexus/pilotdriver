@@ -288,10 +288,10 @@ static void pilot_internals_init()
   _internals.spiclk = 10000000;
 }
 
-#define TARGET_INVALID_BLOCK_SIZE 32
+#define TARGET_BLOCK_SIZE 32
 static int pilot_comm_task(void *vp)
 {
-  static spidata_t target_invalid_block[TARGET_INVALID_BLOCK_SIZE] = { [ 0 ... TARGET_INVALID_BLOCK_SIZE-1 ] = target_invalid};
+  static spidata_t target_invalid_block[TARGET_BLOCK_SIZE] = { [ 0 ... TARGET_BLOCK_SIZE-1 ] = target_invalid};
   int max_rx_len = 0;
   int is_invalid_block_transmit = 0;
 
@@ -320,29 +320,21 @@ static int pilot_comm_task(void *vp)
     {    
       if (queue_get_room(&_internals.RxQueue) > 0)
       {
-        /* get the next data to send */
-        /*
-        if (_internals.pilot_recv_buffer_full)
-          _internals.send = (target_invalid << 8);
-        else if ((data_available = queue_dequeue(&_internals.TxQueue, &_internals.send)) == 0)
-          _internals.send = (target_invalid << 8);
-        */
-
         spi_message_init(&_internals.spi_message);
 
         if (queue_is_empty(&_internals.TxQueue))
         {  //transmit invalid target blocks, we just need the received data
           _internals.spi_xfer.tx_buf = target_invalid_block;
-          _internals.spi_xfer.len = TARGET_INVALID_BLOCK_SIZE;
+          _internals.spi_xfer.len = TARGET_BLOCK_SIZE;
           is_invalid_block_transmit = 1;
-          LOG_DEBUGALL("transmitting %d invalid blocks to receive data", TARGET_INVALID_BLOCK_SIZE);
+          LOG_DEBUGALL("transmitting %d invalid blocks to receive data", TARGET_BLOCK_SIZE);
         }
         else
         {
           is_invalid_block_transmit = 0;
           _internals.spi_xfer.len = queue_read_seq_block(&_internals.TxQueue, (void**)&_internals.spi_xfer.tx_buf);
-          if (_internals.spi_xfer.len > 32)
-            _internals.spi_xfer.len = 32; //chunk limit, much more does not work for some reason with spi_sync
+          if (_internals.spi_xfer.len > TARGET_BLOCK_SIZE)
+            _internals.spi_xfer.len = TARGET_BLOCK_SIZE; //chunk limit, much more does not work for some reason with spi_sync
           LOG_DEBUGALL("transmitting %d bytes in TxQueue starting from %d (write is %d)", _internals.spi_xfer.len, _internals.TxQueue.read,  _internals.TxQueue.write);
         }
 
@@ -353,10 +345,6 @@ static int pilot_comm_task(void *vp)
           _internals.spi_xfer.len = max_rx_len;
         }
         LOG_DEBUGALL("adjusting txrx bytes to %d bytes in RxQueue starting from %d", _internals.spi_xfer.len, _internals.RxQueue.write);          
-
-        //_internals.spi_xfer.len = 2;
-        //_internals.spi_xfer.tx_buf = &_internals.send;
-        //_internals.spi_xfer.rx_buf = &_internals.recv,
 
         if (_internals.spi_xfer.len > 0)
         {
@@ -374,18 +362,6 @@ static int pilot_comm_task(void *vp)
 
           //signal data received thread to process data
           WAIT_WAKEUP(data_received_wait_queue);
-
-          /*
-          if ((_internals.recv & 0x0080) || _internals.recv == 0xFFFF) //pilot receive buffer full bit set (and the target byte is not 0xFF which occurs when MISO is always high)
-            _internals.pilot_recv_buffer_full = true;
-          else
-            _internals.pilot_recv_buffer_full = false;
-          */
-          //queue_enqueue(&_internals.RxQueue, _internals.recv);
-
-          //LOG_DEBUGALL("spi_sync done (tx=%x rx=%x)", _internals.send, _internals.recv); 
-
-          //_internals.stats.sent_byte_count[(_internals.send >> 8)]++;
         }
       }
     }
@@ -1730,120 +1706,6 @@ static const struct proc_ops proc_pilot_spiclk_fops = {
   .proc_release = single_release,
   .proc_write = pilot_proc_pilot_spiclk_write
 };
-
-/************************
-* /proc/pilot/reset
-************************/
-
-/*
-static int pilot_proc_pilot_reset_show(struct seq_file *file, void *data)
-{
-  seq_printf(file, "%i\n", gpio_get_value(_internals.reset_gpio));
-  return 0;
-}
-
-static int pilot_proc_pilot_reset_write(struct file* file, const char __user *buf, size_t count, loff_t *off)
-{
-  int new_value, ret=-EINVAL;
-
-   // try to get an int value from the user
-  if (kstrtoint_from_user(buf, count, 10, &new_value) != SUCCESS)
-    ret = -EINVAL; // return an error if the conversion fails
-  else
-  {
-    if (new_value == 0 || new_value == 1)
-    {
-       gpio_set_value(_internals.reset_gpio, new_value);    
-      ret = count;
-    }
-   }
-  return ret;
-}
-
-static int pilot_proc_pilot_reset_open(struct inode *inode, struct file *file)
-{
-  return single_open(file, pilot_proc_pilot_reset_show, NULL);
-}
-
-// file operations for /proc/pilot/reset
-static const struct proc_ops proc_pilot_reset_fops = {
-  
-  .proc_open =pilot_proc_pilot_reset_open,
-  .proc_read = seq_read,
-  .proc_lseek  =seq_lseek,
-  .proc_release = single_release,
-  .proc_write = pilot_proc_pilot_reset_write
-};
-*/
-
-/************************
-* /proc/pilot/firmware
-************************/
-
-/*
-
-static int pilot_proc_pilot_firmware_show(struct seq_file *file, void *data)
-{
-  uint8_t aRxBuffer[256];
-  uint8_t aTxBuffer[256];
-  uint8_t version;
-  uint16_t chipID;
-
-  // go into boot mode
-  gpio_set_value(_internals.boot_gpio, 1);    
-  gpio_set_value(_internals.reset_gpio, 1);
-  msleep(100);    
-  gpio_set_value(_internals.reset_gpio, 0);
-  msleep(100);    
-
-  LOG_DEBUG("BL_Init()");
-  BL_Init(_internals.spi0);
-  LOG_DEBUG("BL_Get_Command()");
-  BL_Get_Command(aRxBuffer);
-  LOG_DEBUG("BL_Get_Version()");
-  version = BL_GetVersion_Command();
-  LOG_DEBUG("BL_GetID()");
-  chipID = BL_GetID_Command();
-
-  LOG_DEBUG("Version %x", version);
-  LOG_DEBUG("chipID %x", chipID);
-
-  //seq_printf(file, "%i\n", _internals.spiclk);
-  return 0;
-}
-
-static int pilot_proc_pilot_firmware_write(struct file* file, const char __user *buf, size_t count, loff_t *off)
-{
-  int new_value, ret=-EINVAL;
-
-  // go into boot mode
-  gpio_set_value(_internals.boot_gpio, 1);    
-  gpio_set_value(_internals.reset_gpio, 1);
-  msleep(100);    
-  gpio_set_value(_internals.reset_gpio, 0);
-
-  //start file write
-
-
-  return ret;
-}
-
-static int pilot_proc_pilot_firmware_open(struct inode *inode, struct file *file)
-{
-  return single_open(file, pilot_proc_pilot_firmware_show, NULL);
-}
-
-// file operations for /proc/pilot/firmware
-static const struct proc_ops proc_pilot_firmware_fops = {
-  
-  .proc_open =pilot_proc_pilot_firmware_open,
-  .proc_read = seq_read,
-  .proc_lseek  =seq_lseek,
-  .proc_release = single_release,
-  .proc_write = pilot_proc_pilot_firmware_write
-};
-
-*/
 
 /************************
 * /proc/pilot/stats

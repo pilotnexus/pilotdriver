@@ -40,5 +40,6 @@
 /* use LOG() instead of printk() to prefix "rpc: " to traced messages */
 #define LOG(LEVEL, fmt, args...) do { printk( LEVEL MODULE_NAME ": " fmt "\n", ## args); } while(0)
 #define LOG_INFO(fmt, args...) do { printk( KERN_INFO MODULE_NAME ": " fmt "\n", ## args); } while(0)
+#define LOG_ERROR(fmt, args...) do { printk( KERN_ERR MODULE_NAME ": " fmt "\n", ## args); } while(0)
 
 #endif

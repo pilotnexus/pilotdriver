@@ -210,7 +210,7 @@ static const char* pilot_io_get_module_string(pilot_io_module_type_t module_type
 static int pilot_io_gpio_get_next_base(int gpio_count)
 {
   /* start with the base */ 
-  int i, base_taken, gpio_base; struct gpio_chip* gc;
+  int i = 0, base_taken, gpio_base; struct gpio_chip* gc;
 
   /* look for the next free gpio range */
 

@@ -1781,7 +1781,7 @@ static pilot_cmd_handler_status_t pilot_callback_cmd_received(pilot_cmd_t cmd)
               }
             }
 
-            mutex_unlock(&_internals.variables[v.number]access_lock);
+            mutex_unlock(&_internals.variables[v.number]->access_lock);
           }
 
         }
