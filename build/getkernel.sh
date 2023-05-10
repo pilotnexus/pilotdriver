@@ -1,14 +1,15 @@
 #!/bin/bash
+#ldcon
 THREADS=4
 
-if [ "$#" -ne 3 ]
+if [ "$#" -lt 2 ]
 then
   echo "Build Pilot Driver Modules"
   echo ""
   echo "Usage: getkernel [IP] [user] [password]"
   echo "IP: The IP address of a Raspberry Pi containing the kernel version for which the drivers should be compiled (make sure that it is accessible via SSH)"
   echo "user: SSH Username"
-  echo "password: SSH Password"
+  echo "password: SSH Password (optional if SSH key is set up)"
   exit 1
 fi
 
@@ -20,35 +21,40 @@ else
   exit 2;
 fi
 
-if [ ! -d "./tools" ]; then
-  echo "Tools not yet installed, installing..."
-  git clone https://github.com/raspberrypi/tools.git
+# If password is provided, use it. If not, use SSH key-based authentication.
+if [ "$#" -eq 3 ]
+then
+  DIR=$(sshpass -p $3 ssh -o StrictHostKeyChecking=no -q $2@$1 "uname -a" | awk '{ printf tolower($1) "-rpi-" $3} $4 ~ /#/ { print substr($4,2) }') || { echo 'error getting uname' ; exit 1; }
+else
+  DIR=$(ssh -o StrictHostKeyChecking=no -q $2@$1 "uname -a" | awk '{ printf tolower($1) "-rpi-" $3} $4 ~ /#/ { print substr($4,2) }') || { echo 'error getting uname' ; exit 1; }
 fi
- 
-DIR=$(sshpass -p $3 ssh -o StrictHostKeyChecking=no -q $2@$1 "uname -a" | awk '{ printf tolower($1) "-rpi-" $3} $4 ~ /#/ { print substr($4,2) }') || { echo 'error getting uname' ; exit 1; }
 
 if [ -z "$DIR" ]; then
- echo "Could not remotely get kernel version. Is host, username and password correct?"
+ echo "Could not remotely get kernel version. Is host and username correct?"
  exit 1;
 else
   echo "Building for kernel $DIR"
 fi
 
-export CCPREFIX=$PWD/tools/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64/bin/arm-linux-gnueabihf-
+export CCPREFIX=arm-linux-gnueabihf-
 
-mkdir ./rpi
+mkdir -p ./rpi
 cd ./rpi
 if [ -d "$DIR" ]; then
-  # Control will enter here if $DIRECTORY exists.
   echo "$DIR already exists..updating"
-  #rm -R "$DIR" || { echo 'removing directory ./rpi/$DIR failed' ; exit 1; }
 else
   echo "creating directory $DIR"
   mkdir "$DIR" || { echo 'creating directory ./rpi/$DIR failed' ; exit 1; }
 fi
 
-HASH=$(sshpass -p $3 ssh -o StrictHostKeyChecking=no -q $2@$1 "FIRMWARE_HASH=\$(/bin/zgrep '* firmware as of' /usr/share/doc/raspberrypi-bootloader/changelog.Debian.gz | head -1 | awk '{ print \$5 }') && /usr/bin/wget https://raw.github.com/raspberrypi/firmware/\$FIRMWARE_HASH/extra/git_hash -O - 2> /dev/null")
-
+# If password is provided, use it. If not, use SSH key-based authentication.
+if [ "$#" -eq 3 ]
+then
+  HASH=$(sshpass -p $3 ssh -o StrictHostKeyChecking=no -q $2@$1 "FIRMWARE_HASH=\$(/bin/zgrep '* firmware as of' /usr/share/doc/raspberrypi-bootloader/changelog.Debian.gz | head -1 | awk '{ print \$5 }') && /usr/bin/wget https://raw.github.com/raspberrypi/firmware/\$FIRMWARE_HASH/extra/git_hash -O - 2> /dev/null")
+else
+  HASH=$(ssh -o StrictHostKeyChecking=no -q $2@$1 "FIRMWARE_HASH=\$(/bin/zgrep '* firmware as of' /usr/share/doc/raspberrypi-bootloader/changelog.Debian.gz | head -1 | awk '{ print \$5 }') && /usr/bin/wget https://raw.github.com/raspberrypi/firmware/\$FIRMWARE_HASH/extra/git_hash -O - 2> /dev/null")
+fi
+echo "firmware hash: $HASH"
 echo "fetching linux kernel"
 if [ ! -d "./linux" ]; then
   echo "Kernel source tree does not exist yet, cloning..."
@@ -68,19 +74,28 @@ export KERNEL_SRC="$PWD/$DIR"
 
 cd ../$DIR || { echo 'cd failed' ; exit 1; }
 make mrproper
+
 rm -rf ./config.gz
-sshpass -p $3 ssh -o StrictHostKeyChecking=no -q $2@$1 "sudo modprobe configs"
-sshpass -p $3 scp -o StrictHostKeyChecking=no -q $2@$1:/proc/config.gz ./
+echo "copying config.gz to $PWD"
+# If password is provided, use it. If not, use SSH key-based authentication.
+if [ "$#" -eq 3 ]
+then
+  sshpass -p $3 ssh -o StrictHostKeyChecking=no -q $2@$1 "sudo modprobe configs"
+  sshpass -p $3 scp -o StrictHostKeyChecking=no -q $2@$1:/proc/config.gz ./
+else
+  ssh -o StrictHostKeyChecking=no -q $2@$1 "sudo modprobe configs"
+  scp -o StrictHostKeyChecking=no -q $2@$1:/proc/config.gz ./
+fi
+
 retVal=$?
 if [ $retVal -ne 0 ]; then
     echo "Error getting config.gz"
     exit $retVal
 fi
+
 chown $USER:$USER config.gz
 zcat config.gz > .config || { echo 'error creating .config' ; exit 1; }
 
 echo "building kernel"
-
-make ARCH=arm CROSS_COMPILE=${CCPREFIX} -j$THREADS oldconfig
+make ARCH=arm CROSS_COMPILE=${CCPREFIX} -j$THREADS defconfig
 make ARCH=arm CROSS_COMPILE=${CCPREFIX} -j$THREADS
-
