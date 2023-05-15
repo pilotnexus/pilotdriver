@@ -39,10 +39,11 @@ typedef struct {
 
 /* holds info about a module */
 typedef struct {
+  int index;                                        /* module index */
   char* name_module;                                /* name of the module - pointer to a zero terminated string */
   driver_t* driver;                                 /* pointer to the driver that controls it, if any */
-  //module_type_t module_type;                        /* type of the module, returned by the drivers callback_assign_slot() function */
-  pilot_module_type_t type;                          /* type of the module, returned by the firmware */
+  //module_type_t module_type;                      /* type of the module, returned by the drivers callback_assign_slot() function */
+  pilot_module_type_t type;                         /* type of the module, returned by the firmware */
   volatile int type_is_updated;                     /* set when the module type is updated */
   DEF_WQ_HEAD(type_is_updated_wq);
 
@@ -114,9 +115,7 @@ typedef struct
 
   pilot_current_cmd_t current_cmd; /* collects the current command that is being received from the stm */
 
-  int data_m2r_gpio; /* gpio for the m2r data pin */
-  int reset_gpio; /* gpio for the reset pin */
-  int boot_gpio; /* gpio for the boot pin */
+  struct gpio_desc *data_m2r_gpio;
   
   int irq_data_m2r; /* the requested irq handler, stores return valued of rpc_irq_init() and used as argument for rpc_irq_deinit() */
   

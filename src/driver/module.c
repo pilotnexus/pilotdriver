@@ -41,30 +41,25 @@
 #include <linux/of_gpio.h> 
 
 // forward declaration of pilot private functions
-static int  __init rpc_init(void);
-static void __exit rpc_exit(void);
+static int  __init pilot_init(void);
+static void __exit pilot_exit(void);
 
 static void pilot_internals_init(void);
 
-static void                   rpc_spi0_handle_received_data(spidata_t miso);
+static void pilot_spi0_handle_received_data(spidata_t miso);
 
-static int         rpc_irq_data_m2r_init (int gpio);
-static void        rpc_irq_data_m2r_deinit(int irq);
-static irqreturn_t rpc_irq_data_m2r_handler(int irq, void* dev_id);
+static int pilot_irq_data_m2r_init(struct device *dev, struct gpio_desc *desc, const char* irq_name);
+static irqreturn_t pilot_irq_data_m2r_handler(int irq, void* dev_id);
 
-//static void       spi_complete(void *context);
-//static void        rpc_irq_data_m2r_work_queue_handler(struct work_struct *work); /* workqueue definition */
-//static void        rpc_irq_data_m2r_work_queue_handler(unsigned long data); /* tasklet definition */
-
-static void rpc_proc_init(void);
-static void rpc_proc_deinit(void);
+static void pilot_proc_init(void);
+static void pilot_proc_deinit(void);
 
 static int pilot_try_get_module_uid(int module_index, int timeout, pilot_eeprom_uid_t **uid);
 static int pilot_try_get_module_hid(int module_index, int timeout, pilot_eeprom_hid_t **hid);
 
 static int pilot_handle_module_assignment(module_slot_t slot, const pilot_module_type_t *module_type);
-static void rpc_unregister_driver(driver_t* driver);
-static void rpc_unassign_slot(module_slot_t slot);
+static void pilot_internal_unregister_driver(driver_t* driver);
+static void pilot_unassign_slot(module_slot_t slot);
 
 static int pilot_comm_task(void *vp);
 
@@ -78,26 +73,10 @@ uint32_t average_spi_load;
 struct task_struct *pilot_receive_thread;
 struct task_struct *pilot_comm_thread;
 
-
 DEF_WQ_HEAD(data_received_wait_queue);
 DEF_WQ_HEAD(comm_wait_queue);
 
-//static DEFINE_MUTEX(spi_transmit_lock);
-//static DEFINE_SPINLOCK(spi_txrx_lock);
-//unsigned long spi_txrx_lock_flags;
-
 static internals_t _internals; /* holds all private fields */
-
-//static struct workqueue_struct *comm_wq;
-
-/* workqueue for bottom half of DATA_M2R irq handler */
-//static DECLARE_WORK(_internals_irq_data_m2r_work, rpc_irq_data_m2r_work_queue_handler);
-
-/* tasklet */
-//DECLARE_TASKLET( _internals_irq_data_m2r_tasklet, rpc_irq_data_m2r_work_queue_handler, (unsigned long) 0 );
-
-/* spinlock to secure the spi data transfer */
-//static spinlock_t QueueLock;
 
 const int POLYNOME = 0x04C11DB7;
 const uint32_t INITIAL_CRC_VALUE = 0xFFFFFFFF;
@@ -158,39 +137,25 @@ static const struct proc_ops proc_pilot_spiclk_fops,
                                     proc_pilot_uart_mode_fops;
 
 /* module entry point function, gets called when loading the module */
-module_init(rpc_init);
+module_init(pilot_init);
 
 /* module exit point function, gets called when unloading the module */
-module_exit(rpc_exit);
+module_exit(pilot_exit);
 
-static int assign_gpio(struct device *dev, int* pin, int direction, const char* pin_name)
+static struct gpio_desc* assign_gpio(struct device *dev, const char* pin_name, enum gpiod_flags flags)
 {
-  uint32_t ret;
-  char gpio_name[100];
-  strcpy(gpio_name, pin_name);
-  strcat(gpio_name, "-gpios");
-  *pin = of_get_named_gpio(dev->of_node, gpio_name, 0);
-  if (gpio_is_valid(*pin))
-  {
-    LOG_DEBUG("gpio=%d valid", *pin);
-    ret = devm_gpio_request_one(dev, *pin, direction, pin_name);
-    if (ret)
-    {
-      LOG(KERN_ERR, "Failed to request GPIO (%d): error %d", *pin, ret);
-    }
-    else
-    {
-      LOG_DEBUG("Request GPIO (%d) successful", *pin);
+  struct gpio_desc *desc;
+  int ret;
 
-      return 1;
-    }
-  }
-  else
-  {
-    LOG(KERN_ERR, "devm_gpio_request_one() failed for GPIO (%d)", *pin);
+  desc = devm_gpiod_get(dev, pin_name, flags);
+  if (IS_ERR(desc)) {
+    ret = PTR_ERR(desc);
+    LOG(KERN_ERR, "Failed to request GPIO (%s): error %d", pin_name, ret);
+    return NULL;
   }
 
-  return 0;
+  LOG_DEBUG("Request GPIO (%s) successful", pin_name);
+  return desc;
 }
 
 static int32_t pilot_spi_probe(struct spi_device * spi)
@@ -212,7 +177,7 @@ static int32_t pilot_spi_probe(struct spi_device * spi)
    ret=spi_setup(spi);
     dev_info(&spi->dev,
           "default setup (%d): cs %d (cs_gpio=%d): %d Hz: bpw %u, mode 0x%x\n",
-    ret, spi->chip_select, spi->cs_gpio, spi->max_speed_hz, spi->bits_per_word,
+    ret, spi->chip_select, desc_to_gpio(spi->cs_gpiod), spi->max_speed_hz, spi->bits_per_word,
     spi->mode);
 
     _internals.spi0 = spi;
@@ -224,14 +189,11 @@ static int32_t pilot_spi_probe(struct spi_device * spi)
 
     if (np)
     {
-      if (assign_gpio(&spi->dev, &_internals.data_m2r_gpio, GPIOF_IN, "data_m2r")) 
-      {
-            // install the irq handler
-          _internals.irq_data_m2r = rpc_irq_data_m2r_init(_internals.data_m2r_gpio);
-      }
-
-      //assign_gpio(&spi->dev, &_internals.reset_gpio, GPIOF_OUT_INIT_LOW, "reset");
-      //assign_gpio(&spi->dev, &_internals.boot_gpio, GPIOF_OUT_INIT_LOW, "boot");
+      _internals.data_m2r_gpio = assign_gpio(&spi->dev, "data_m2r", GPIOD_IN);
+      // TODO Handle Error
+      // install the irq handler
+      _internals.irq_data_m2r = pilot_irq_data_m2r_init(&spi->dev, _internals.data_m2r_gpio, "data_m2r_irq");
+      // TODO handle error
     }
     else 
     {
@@ -246,22 +208,12 @@ static int32_t pilot_spi_probe(struct spi_device * spi)
   return 0;
 }
 
-static int32_t pilot_spi_remove(struct spi_device * spi)
+static void pilot_spi_remove(struct spi_device * spi)
 {
   if (spi->chip_select == 0)
   {
     LOG_DEBUG("pilot_spi_remove() for CS0 called");
-
-    // free the irq again
-    rpc_irq_data_m2r_deinit(_internals.irq_data_m2r);
-
-    // free the gpios
-    devm_gpio_free(&spi->dev, _internals.data_m2r_gpio);
-    //devm_gpio_free(&spi->dev, _internals.reset_gpio);
-    //devm_gpio_free(&spi->dev, _internals.boot_gpio);
   }
-
-  return 0;
 }
 
 static struct spi_driver pilot_spi_driver = {
@@ -277,6 +229,7 @@ static struct spi_driver pilot_spi_driver = {
 /* initialize the internal members */
 static void pilot_internals_init()
 {
+  int i;
   /* initialize the cmd handler list */
   INIT_LIST_HEAD(&_internals.list_cmd_handler);
 
@@ -285,6 +238,10 @@ static void pilot_internals_init()
   INIT_WQ_HEAD(_internals.uart_mode_is_updated_wq);
   INIT_WQ_HEAD(_internals.fwinfo_is_updated_wq);
   start_spi_us = end_spi_us = ktime_to_us(ktime_get());
+
+  for (i = 0; i < MODULES_COUNT; i++)
+    _internals.modules[i].index = i;
+
   _internals.spiclk = 10000000;
 }
 
@@ -300,7 +257,7 @@ static int pilot_comm_task(void *vp)
   while (1)
   {
     //todo - checks are currently duplicated in rpc_spi0_transmit()
-    if (WAIT_EVENT_INTERRUPTIBLE(comm_wait_queue, !queue_is_empty(&_internals.TxQueue) || gpio_get_value(_internals.data_m2r_gpio) || kthread_should_stop()))
+    if (WAIT_EVENT_INTERRUPTIBLE(comm_wait_queue, !queue_is_empty(&_internals.TxQueue) || gpiod_get_value(_internals.data_m2r_gpio) > 0 || kthread_should_stop()))
     {
       LOG_DEBUG("communication thread interrupted");
       return 1; //interrupted
@@ -311,12 +268,12 @@ static int pilot_comm_task(void *vp)
 
 
     LOG_DEBUGALL("spi_sync (m2r=%d, tx-queue-empty=%d, rx-queue-room=%d, pilot-recv-buffer-full=%d)", 
-    gpio_get_value(_internals.data_m2r_gpio), 
+    gpiod_get_value(_internals.data_m2r_gpio), 
     queue_is_empty(&_internals.TxQueue),
     queue_get_room(&_internals.RxQueue),
      _internals.pilot_recv_buffer_full);
 
-    while ((!queue_is_empty(&_internals.TxQueue) || _internals.pilot_recv_buffer_full || (gpio_get_value(_internals.data_m2r_gpio))))
+    while ((!queue_is_empty(&_internals.TxQueue) || _internals.pilot_recv_buffer_full || (gpiod_get_value(_internals.data_m2r_gpio)) > 0))
     {    
       if (queue_get_room(&_internals.RxQueue) > 0)
       {
@@ -387,13 +344,13 @@ static int pilot_receive_task(void *vp)
 
     while (queue_dequeue(&_internals.RxQueue, &recv) == 1)
     {
-      rpc_spi0_handle_received_data(recv);
+      pilot_spi0_handle_received_data(recv);
     }
   }
 }
 
 /* initialization function, called from module_init() */
-static int __init rpc_init(void)
+static int __init pilot_init(void)
 {
   int i, retValue = SUCCESS;
   LOG_DEBUG("pilot_init()");
@@ -413,8 +370,8 @@ static int __init rpc_init(void)
   pilot_receive_thread = kthread_run(pilot_receive_task, NULL, "K_PILOT_RECV_TASK");
 
     // init the /proc/XXX files
-  LOG_DEBUG("rpc_proc_init()");
-  rpc_proc_init();
+  LOG_DEBUG("pilot_proc_init()");
+  pilot_proc_init();
 
 
     LOG_DEBUG("initialization complete");
@@ -424,9 +381,9 @@ static int __init rpc_init(void)
 }
 
 /* cleanup function, called from module_exit() */
-static void __exit rpc_exit(void)
+static void __exit pilot_exit(void)
 {
-  LOG_DEBUG("rpc_exit() called.");
+  LOG_DEBUG("pilot_exit() called.");
   
   if (pilot_comm_thread) 
   {
@@ -444,49 +401,44 @@ static void __exit rpc_exit(void)
   LOG_DEBUG("Threads stopped.");
 
   // free /proc/XXX files
-  rpc_proc_deinit();
+  pilot_proc_deinit();
   
   spi_unregister_driver(&pilot_spi_driver);
 
   LOG_DEBUG("Goodbye!");
 }
 
-static int rpc_irq_data_m2r_init(int gpio)
+// returns IRQ
+// if returnvalue < 0, an error occured 
+static int pilot_irq_data_m2r_init(struct device *dev, struct gpio_desc *desc, const char* irq_name)
 {
     int err, irq;
 
-  // map the gpio to the irq
-  irq = gpio_to_irq(gpio);
+    // map the gpio to the irq
+    irq = gpiod_to_irq(desc);
 
-  if (irq < 0) {
-    LOG(KERN_ERR, "gpio_to_irq(%i) failed with returncode %i", gpio, irq);
-    return irq;
-  }
-  else
-  {
-    err = request_irq( irq,                               // the irq we want to receive
-                       rpc_irq_data_m2r_handler,          // our irq handler function
-                       IRQF_SHARED | IRQF_TRIGGER_RISING, // irq is shared and triggered on the rising edge
-                       IRQ_DEV_NAME,                      // device name that is displayed in /proc/interrupts
-                       (void*)(rpc_irq_data_m2r_handler)  // a unique id, needed to free the irq
-                       );
+    if (irq < 0) {
+        LOG(KERN_ERR, "gpiod_to_irq() failed with return code %i", irq);
+        return irq;
+    }
+    else {
+        err = devm_request_irq(
+            dev,                                  // device related to the irq
+            irq,                                  // irq
+            pilot_irq_data_m2r_handler,           // our irq handler function
+            IRQF_SHARED | IRQF_TRIGGER_RISING,    // irq is shared and triggered on the rising edge
+            irq_name,                             // device name that is displayed in /proc/interrupts
+            (void*)(pilot_irq_data_m2r_handler)   // a unique id, needed to free the irq
+        );
 
-    LOG_DEBUG( "request_irq(%i..) returned %i", irq, err);
+        LOG_DEBUG( "devm_request_irq(%i..) returned %i", irq, err);
 
-    return (err == SUCCESS) ? irq : -1;
-  }
-}
-
-static void rpc_irq_data_m2r_deinit(int irq)
-{
-  LOG_DEBUG("rpc_irq_data_m2r_deinit() called with irq=%i", irq);
-  if (irq != 0) {
-    free_irq(irq, (void*)(rpc_irq_data_m2r_handler));
-  }
+        return (err == 0) ? irq : -1;
+    }
 }
 
 /* description: gets invoked when the stm changes the DATA pin */
-static irqreturn_t rpc_irq_data_m2r_handler(int irq, void* dev_id)
+static irqreturn_t pilot_irq_data_m2r_handler(int irq, void* dev_id)
 {
   //tasklet_schedule(&_internals_irq_data_m2r_tasklet); 
   //schedule_work(&_internals_irq_data_m2r_work);
@@ -799,18 +751,18 @@ static const char * target_to_string(target_t target)
 
 /* description: handles a received word from the spi */
 /* performance critical - enable inlining */
-static void rpc_spi0_handle_received_data(spidata_t miso)
+static void pilot_spi0_handle_received_data(spidata_t miso)
 {
   target_t target;
   module_slot_t slot; module_port_t port;
   char data;
 
-  //LOG_DEBUG("rpc_spi0_handle_received_data(miso=%x)", miso);
+  //LOG_DEBUG("pilot_spi0_handle_received_data(miso=%x)", miso);
 
   target = (miso & 0xFF) & 0x7F;
   data   = (miso >> 8);
 
-  //LOG_DEBUGALL("rpc_spi0_handle_received_data(target=%s, data=%x)", target_to_string(target), data);
+  //LOG_DEBUGALL("pilot_spi0_handle_received_data(target=%s, data=%x)", target_to_string(target), data);
 
   if (target >= target_base)
   {
@@ -859,7 +811,7 @@ static char* pilot_proc_module_eeprom_user_names[] = { "user00", "user01", "user
 #define pilot_proc_uart_mode_name "uartmode" /* /proc/pilot/uartmode */
 #define pilot_proc_uid_name "uid" /* filename: /proc/pilot/uid */
 #define pilot_proc_fwinfo_name "fwinfo" /* filename: /proc/pilot/fwinfo */
-#define RPC_PROC_BUFFER_SIZE 255
+#define PILOT_PROC_BUFFER_SIZE 255
 
 #define PROC_USER_DATA_GET_INT(module_index, data_index) ( (module_index << 8) | (data_index) )
 #define PROC_USER_DATA_GET_MODULE_INDEX(value) ( value >> 8 )
@@ -867,7 +819,7 @@ static char* pilot_proc_module_eeprom_user_names[] = { "user00", "user01", "user
 
 
 /* description: registers the files used in /proc/... */
-static void rpc_proc_init(void)
+static void pilot_proc_init(void)
 {
   int i, j;
   struct proc_dir_entry *base_dir, *module_dir, *eeprom_dir;
@@ -945,7 +897,7 @@ static void rpc_proc_init(void)
 }
 
 /* description: removes the 'proc' filesystem entries ('/proc/pilotdrivers', '/proc/pilotmodules', '/proc/pilotmodule0', '/proc/pilotmodule1', '/proc/pilotmodule2' and '/proc/pilotmodule3') */
-static void rpc_proc_deinit(void)
+static void pilot_proc_deinit(void)
 {
   int i, j;
 
@@ -1321,7 +1273,7 @@ static int pilot_assign_slot(int driverId, module_slot_t slot, const pilot_modul
   driver_t* d;
   LOG_DEBUG("assigning driverId=%i to slot=%i", driverId, slot);
 
-  rpc_unassign_slot(slot); // first unassign it
+  pilot_unassign_slot(slot); // first unassign it
 
   if (driverId > 0 && driverId <= DRIVERS_COUNT)
   {
@@ -1350,7 +1302,7 @@ static int pilot_handle_module_assignment(module_slot_t slot, const pilot_module
   if (module_type->name[0] == '0' ||
      (module_type->name[0] == 'n' && module_type->name[1] == 'o' && module_type->name[2] == 'n' && module_type->name[3] == 'e'))
   {
-    rpc_unassign_slot(slot);
+    pilot_unassign_slot(slot);
     ret = SUCCESS;
   }
   else
@@ -1388,7 +1340,7 @@ void pilot_auto_configure(void)
 }
 
 /* description: unregisters the supplied driver by first unassigning the modules to the driver, then removing the driver description */
-static void rpc_unregister_driver(driver_t* driver)
+static void pilot_internal_unregister_driver(driver_t* driver)
 {
   int i;
   if (driver != NULL)
@@ -1396,7 +1348,7 @@ static void rpc_unregister_driver(driver_t* driver)
     // unassign the module slots that the driver occupies
     for (i = 0; i < MODULES_COUNT; i++)
       if (_internals.modules[i].driver == driver) {
-        rpc_unassign_slot(i);
+        pilot_unassign_slot(i);
       }
 
     // unregister the driver description
@@ -1406,7 +1358,7 @@ static void rpc_unregister_driver(driver_t* driver)
   }
 }
 
-static void rpc_unassign_slot(module_slot_t slot)
+static void pilot_unassign_slot(module_slot_t slot)
 {
    module_t* m = &_internals.modules[slot];
    
@@ -2226,7 +2178,7 @@ void pilot_unregister_driver(int driverId)
   LOG_DEBUG("pilot_unregister_driver() called with driverId=%i", driverId);
   
   // driver ids are 1 based
-  rpc_unregister_driver(&_internals.drivers[driverId-1]); 
+  pilot_internal_unregister_driver(&_internals.drivers[driverId-1]); 
 }
 
 /* description: sends the supplied data to the specified module */
