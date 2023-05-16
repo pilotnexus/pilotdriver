@@ -499,9 +499,9 @@ static void pilot_spi0_handle_received_base_cmd(pilot_cmd_t *cmd)
     /* update the user data */
     data_index = eeprom_decode_data_index(cmd->target);
     for (i = 0; i < pilot_cmd_t_data_size && i < EEPROM_DATA_LENGTH; i++)
-      _internals.modules[eeprom_decode_module_slot(cmd->target)].user[data_index].data[i] = cmd->data[i];
-    _internals.modules[eeprom_decode_module_slot(cmd->target)].user_is_updated[data_index] = 1;
-    WAIT_WAKEUP(_internals.modules[eeprom_decode_module_slot(cmd->target)].user_is_updated_wq[data_index]);
+      _internals.modules[eeprom_decode_module_slot(cmd->target)].eeprom_user_data[data_index].user.data[i] = cmd->data[i];
+    _internals.modules[eeprom_decode_module_slot(cmd->target)].eeprom_user_data[data_index].user_is_updated = 1;
+    WAIT_WAKEUP(_internals.modules[eeprom_decode_module_slot(cmd->target)].eeprom_user_data[data_index].user_is_updated_wq);
     break;
 
   case pilot_cmd_type_module_type_get:
@@ -890,8 +890,10 @@ static void pilot_proc_init(void)
     /* create read- and writeable proc entries for user content */
     for (j = 0; j < EEPROM_USER_DATA_COUNT; j++)
     {
-      INIT_WQ_HEAD(_internals.modules[i].user_is_updated_wq[j]);
-      proc_create_data(pilot_proc_module_eeprom_user_names[j], 0666, eeprom_dir, &proc_pilot_module_eeprom_user_fops, (void*)PROC_USER_DATA_GET_INT(i,j));
+      _internals.modules[i].eeprom_user_data[j].index = j;
+      _internals.modules[i].eeprom_user_data[j].slot = i;
+      INIT_WQ_HEAD(_internals.modules[i].eeprom_user_data[j].user_is_updated_wq);
+      proc_create_data(pilot_proc_module_eeprom_user_names[j], 0666, eeprom_dir, &proc_pilot_module_eeprom_user_fops, &_internals.modules[i].eeprom_user_data[j]);
     }
   }
 }
@@ -1239,7 +1241,7 @@ static int pilot_try_get_module_eeprom_data(int module_index, int user_data_inde
   int timedout = 0;
 
   /* clear the is_updated flag for the module & data */
-  _internals.modules[module_index].user_is_updated[user_data_index] = 0;
+  _internals.modules[module_index].eeprom_user_data[user_data_index].user_is_updated = 0;
 
   /* setup the cmd */
   memset(&cmd, 0, sizeof(pilot_cmd_t));
@@ -1252,14 +1254,14 @@ static int pilot_try_get_module_eeprom_data(int module_index, int user_data_inde
   pilot_send_cmd(&cmd);
 
   /* wait until the data is updated of the timeout occurs */
-  if (WAIT_EVENT_INTERRUPTIBLE_TIMEOUT(_internals.modules[module_index].user_is_updated_wq[user_data_index], _internals.modules[module_index].user_is_updated[user_data_index] != 0, (timeout * HZ / 1000)) <= 0)
+  if (WAIT_EVENT_INTERRUPTIBLE_TIMEOUT(_internals.modules[module_index].eeprom_user_data[user_data_index].user_is_updated_wq, _internals.modules[module_index].eeprom_user_data[user_data_index].user_is_updated != 0, (timeout * HZ / 1000)) <= 0)
   {
     timedout = 1;
     LOG_DEBUG("pilot_try_get_module_eeprom_data() timeout reached while waiting for data!");
   }
   else
   {
-    *data = &_internals.modules[module_index].user[user_data_index];    
+    *data = &_internals.modules[module_index].eeprom_user_data[user_data_index].user;    
     LOG_DEBUGALL("pilot_try_get_module_eeprom_data() successful");
   }
 
@@ -1432,7 +1434,7 @@ static int pilot_try_set_uart_mode(int timeout, int uart_mode)
 }
 
 
-static int pilot_try_get_module_status(int timeout, module_slot_t slot, int *module_status)
+static int pilot_try_get_module_status(int timeout, module_slot_t slot)
 {
   pilot_cmd_t cmd;
   int timedout = 0;
@@ -1456,7 +1458,6 @@ static int pilot_try_get_module_status(int timeout, module_slot_t slot, int *mod
   }
   else
   {
-    *module_status = _internals.modules[slot].status;    
     LOG_DEBUGALL("pilot_try_get_module_status() successful");
   }
 
@@ -1505,9 +1506,9 @@ static int pilot_proc_pilot_module_status_show(struct seq_file *file, void *data
   /* get the slot */
   module_t *module = file->private;
 
-  if (module < MODULES_COUNT)
+  if (module->slot < MODULES_COUNT)
   {
-    if (pilot_try_get_module_status(100, module->slot, module->status) == SUCCESS)
+    if (pilot_try_get_module_status(100, module->slot) == SUCCESS)
     {
       seq_printf(file, "%i\n", module->status);
       return 0;
@@ -2099,13 +2100,12 @@ static const struct proc_ops proc_pilot_module_fid_fops = {
 static int pilot_proc_module_eeprom_user_show(struct seq_file *file, void *data)
 {
   pilot_eeprom_data_t *eeprom_data;
-  int ret, module_index, data_index;
-  module_index = PROC_USER_DATA_GET_MODULE_INDEX((int)file->private);
-  data_index = PROC_USER_DATA_GET_DATA_INDEX((int)file->private);
+  int ret;
+  eeprom_user_data_t *user_data = file->private;
 
-  LOG_INFO("pilot_proc_module_eeprom_user_show() module_index=%i, data_index=%i", module_index, data_index);
+  LOG_INFO("pilot_proc_module_eeprom_user_show() module_index=%i, data_index=%i", user_data->slot, user_data->index);
 
-  if (pilot_try_get_module_eeprom_data(module_index, data_index, EEPROM_TIMEOUT, &eeprom_data) != SUCCESS)
+  if (pilot_try_get_module_eeprom_data(user_data->slot, user_data->index, EEPROM_TIMEOUT, &eeprom_data) != SUCCESS)
     ret = -EFAULT;
   else
   {
@@ -2121,21 +2121,18 @@ static int pilot_proc_module_eeprom_user_open(struct inode *inode, struct file *
   return single_open(file, pilot_proc_module_eeprom_user_show, pde_data(inode));
 }
 
-static ssize_t pilot_proc_pilot_module_eeprom_user_write (struct file *file, const char __user *buf, size_t count, loff_t *off)
+static ssize_t pilot_proc_pilot_module_eeprom_user_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
   pilot_eeprom_data_t data; int not_copied;
-  
-  /* get the slot */
-  module_slot_t module = (module_slot_t)PROC_USER_DATA_GET_MODULE_INDEX(((int)pde_data(file->f_inode)));
-  int data_index = PROC_USER_DATA_GET_DATA_INDEX(((int)pde_data(file->f_inode)));
+  eeprom_user_data_t *user_data = pde_data(file->f_inode);
 
-  LOG_DEBUG("pilot_proc_pilot_module_eeprom_user_write() called for module=%i and data_index=%i", module, data_index);
+  LOG_DEBUG("pilot_proc_pilot_module_eeprom_user_write() called for module=%i and data_index=%i", user_data->slot, user_data->index);
 
   /* copy the input from the cmdline */
   not_copied = copy_from_user(data.data, buf, EEPROM_DATA_LENGTH);
 
   /* try to set the data of the module */
-  pilot_set_module_eeprom_data(module, data_index, &data);
+  pilot_set_module_eeprom_data(user_data->slot, user_data->index, &data);
 
   return count;
 }

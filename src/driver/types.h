@@ -37,6 +37,14 @@ typedef struct {
   unsigned int totalBytesRecv; // running total of all bytes recv
 } driver_t;
 
+typedef struct {
+  int index;                    /* index of the user data in the eeprom */
+  module_slot_t slot;           /* module of the eeprom */
+  pilot_eeprom_data_t user;     /* last received user data of the module */
+  volatile int user_is_updated; /* set when the user data is updated */
+  DEF_WQ_HEAD(user_is_updated_wq);
+} eeprom_user_data_t;
+
 /* holds info about a module */
 typedef struct {
   module_slot_t slot;                               /* module slot, zero-based (index) */
@@ -64,9 +72,10 @@ typedef struct {
   volatile int fid_is_updated;                      /* set when the fid is updated */
   DEF_WQ_HEAD(fid_is_updated_wq);
 
-  pilot_eeprom_data_t user[EEPROM_USER_DATA_COUNT];  /* last received user data of the module */
-  volatile int user_is_updated[EEPROM_USER_DATA_COUNT]; /* set when the user data is updated */
-  DEF_WQ_HEAD(user_is_updated_wq[EEPROM_USER_DATA_COUNT]);
+  eeprom_user_data_t eeprom_user_data[EEPROM_USER_DATA_COUNT]; /* user data of the module */
+  //pilot_eeprom_data_t user[EEPROM_USER_DATA_COUNT];  /* last received user data of the module */
+  //volatile int user_is_updated[EEPROM_USER_DATA_COUNT]; /* set when the user data is updated */
+  //DEF_WQ_HEAD(user_is_updated_wq[EEPROM_USER_DATA_COUNT]);
 } module_t;
 
 #define MAX_CMD_TYPE 256
