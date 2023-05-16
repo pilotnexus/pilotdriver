@@ -240,7 +240,7 @@ static void pilot_internals_init()
   start_spi_us = end_spi_us = ktime_to_us(ktime_get());
 
   for (i = 0; i < MODULES_COUNT; i++)
-    _internals.modules[i].index = i;
+    _internals.modules[i].slot = i;
 
   _internals.spiclk = 10000000;
 }
@@ -861,25 +861,25 @@ static void pilot_proc_init(void)
     _internals.proc_pilot_modules_dir[i] = module_dir = proc_mkdir_mode(pilot_proc_module_dir_names[i], 0, base_dir);
 
     /* create a read/writable proc entry for the modules type (/proc/pilot/moduleX/type)*/
-    proc_create_data(pilot_proc_module_type_name, 0666, module_dir, &proc_pilot_module_type_fops, (void*)i);
+    proc_create_data(pilot_proc_module_type_name, 0666, module_dir, &proc_pilot_module_type_fops, &_internals.modules[i]);
 
     /* create a readable proc entry for the module firmware type (/proc/pilot/moduleX/firmware_type) */
-    proc_create_data(pilot_proc_module_firmware_type_name, 0, module_dir, &proc_pilot_module_firmware_type_fops, (void*)i);
+    proc_create_data(pilot_proc_module_firmware_type_name, 0, module_dir, &proc_pilot_module_firmware_type_fops, &_internals.modules[i]);
 
     /* module state */
-    proc_create_data(pilot_proc_module_status_name, 0666 /* r+w */, module_dir, &proc_pilot_module_status_fops, (void*)i);
+    proc_create_data(pilot_proc_module_status_name, 0666 /* r+w */, module_dir, &proc_pilot_module_status_fops, &_internals.modules[i]);
 
     /* register a directory for all eeprom entries */
     _internals.proc_pilot_modules_eeprom_dir[i] = eeprom_dir = proc_mkdir_mode(pilot_proc_module_eeprom_dir_name, 0,  module_dir);
 
     /* create a readable proc entry for the eeprom uid */
-    proc_create_data(pilot_proc_module_uid, 0, eeprom_dir, &proc_pilot_module_uid_fops, (void*)i);
+    proc_create_data(pilot_proc_module_uid, 0, eeprom_dir, &proc_pilot_module_uid_fops, &_internals.modules[i]);
 
     /* create a read- and writeable proc entry for the eeprom hid */
-    proc_create_data(pilot_proc_module_hid, 0666 /* r+w */, eeprom_dir, &proc_pilot_module_hid_fops, (void*)i);
+    proc_create_data(pilot_proc_module_hid, 0666 /* r+w */, eeprom_dir, &proc_pilot_module_hid_fops, &_internals.modules[i]);
 
     /* create a read- and writeable proc entry for the eeprom fid */
-    proc_create_data(pilot_proc_module_fid, 0666 /* r+w */, eeprom_dir, &proc_pilot_module_fid_fops, (void*)i);
+    proc_create_data(pilot_proc_module_fid, 0666 /* r+w */, eeprom_dir, &proc_pilot_module_fid_fops, &_internals.modules[i]);
 
     INIT_WQ_HEAD(_internals.modules[i].status_is_updated_wq);
     INIT_WQ_HEAD(_internals.modules[i].type_is_updated_wq);
@@ -1006,15 +1006,15 @@ static ssize_t pilot_proc_pilot_module_hid_write(struct file *file, const char _
   pilot_eeprom_hid_t hid; int not_copied;
   
   /* get the slot */
-  module_slot_t module = (module_slot_t)PDE_DATA(file->f_inode);
+  module_t *module = pde_data(file->f_inode);
 
-  LOG_DEBUG("pilot_proc_pilot_module_hid_write() called for module=%i", module);
+  LOG_DEBUG("pilot_proc_pilot_module_hid_write() called for module=%i", module->slot);
 
   /* copy the input from the cmdline */
   not_copied = copy_from_user(hid.data, buf, EEPROM_HID_LENGTH);
 
   /* try to set the hid of the module */
-  pilot_set_module_hid(module, &hid);
+  pilot_set_module_hid(module->slot, &hid);
 
   return count;
 }
@@ -1041,15 +1041,15 @@ static ssize_t pilot_proc_pilot_module_fid_write(struct file *file, const char _
   pilot_eeprom_fid_t fid; int not_copied;
 
   /* get the slot */
-  module_slot_t module = (module_slot_t)PDE_DATA(file->f_inode);
+  module_t *module = pde_data(file->f_inode);
 
-  LOG_DEBUG("pilot_proc_pilot_module_fid_write() called for module=%i", module);
+  LOG_DEBUG("pilot_proc_pilot_module_fid_write() called for module=%i", module->slot);
 
   /* copy the input from userspace */
   not_copied = copy_from_user(fid.data, buf, EEPROM_FID_LENGTH);
 
   /* try to set the fid of the module */
-  pilot_set_module_fid(module, &fid);
+  pilot_set_module_fid(module->slot, &fid);
 
   return count;
 }
@@ -1057,13 +1057,13 @@ static ssize_t pilot_proc_pilot_module_fid_write(struct file *file, const char _
 /* description: callback function that gets called, when the /proc/pilotmoduleX is written to */
 static ssize_t pilot_proc_pilot_module_type_write(struct file *file, const char *buf, size_t count, loff_t *off)
 {
-  int notCopied, slot;
+  int notCopied;
+  module_t *module = pde_data(file->f_inode);
   pilot_module_type_t module_type;
 
-  slot = (int)PDE_DATA(file->f_inode);
   memset(&module_type, 0, sizeof(pilot_module_type_t));
 
-  LOG_DEBUG("pilot_proc_pilot_module_type_write() called for slot=%i with count=%lu", slot , (unsigned long)count);
+  LOG_DEBUG("pilot_proc_pilot_module_type_write() called for slot=%i with count=%lu", module->slot , (unsigned long)count);
 
   // make sure we're not out of bounds
   if (count > sizeof(pilot_module_type_t))
@@ -1074,7 +1074,7 @@ static ssize_t pilot_proc_pilot_module_type_write(struct file *file, const char 
 
   LOG_DEBUG("copy_from_user() returned %i", notCopied);
 
-  if (pilot_handle_module_assignment(slot, &module_type) == SUCCESS)
+  if (pilot_handle_module_assignment(module->slot, &module_type) == SUCCESS)
     return count;
   else
     return -EFAULT;
@@ -1099,7 +1099,7 @@ static void pilot_set_module_eeprom_data(int module_index, int data_index, pilot
 
 // **************** END proc file system functions *****************************************
 
-static int pilot_try_get_module_type(int module_index, int timeout, pilot_module_type_t **type)
+static int pilot_try_get_module_type(module_slot_t module_index, int timeout, pilot_module_type_t **type)
 {
   pilot_cmd_t cmd;
   int is_timedout = 0;
@@ -1328,7 +1328,7 @@ static void pilot_auto_configure_module(module_slot_t slot)
   pilot_module_type_t *module_type;
   LOG_DEBUG("pilot_auto_configuration(slot=%i) called", slot);
 
-  if (pilot_try_get_module_type((int)slot, 100, &module_type) == SUCCESS)
+  if (pilot_try_get_module_type(slot, 100, &module_type) == SUCCESS)
     pilot_handle_module_assignment(slot, module_type);
 }
 
@@ -1503,13 +1503,13 @@ static int pilot_proc_pilot_module_status_show(struct seq_file *file, void *data
 {
 
   /* get the slot */
-  module_slot_t module = (module_slot_t)file->private;
+  module_t *module = file->private;
 
   if (module < MODULES_COUNT)
   {
-    if (pilot_try_get_module_status(100, module, &_internals.modules[module].status) == SUCCESS)
+    if (pilot_try_get_module_status(100, module->slot, module->status) == SUCCESS)
     {
-      seq_printf(file, "%i\n", _internals.modules[module].status);
+      seq_printf(file, "%i\n", module->status);
       return 0;
     }
   }
@@ -1522,9 +1522,9 @@ static ssize_t pilot_proc_pilot_module_status_write(struct file* file, const cha
   int new_value, ret=-EINVAL;
 
   /* get the slot */
-  module_slot_t module = (module_slot_t)PDE_DATA(file->f_inode);
+  module_t* module = pde_data(file->f_inode);
 
-  if (module < MODULES_COUNT)
+  if (module->slot < MODULES_COUNT)
   {
     /* try to get an int value from the user */
     if (kstrtoint_from_user(buf, count, 10, &new_value) != SUCCESS)
@@ -1532,9 +1532,9 @@ static ssize_t pilot_proc_pilot_module_status_write(struct file* file, const cha
     else
     {
       /* sanity check the value before setting the spiclk */
-      if (pilot_try_set_module_status(100, module, new_value) == SUCCESS)
+      if (pilot_try_set_module_status(100, module->slot, new_value) == SUCCESS)
       {
-        _internals.modules[module].status = new_value;
+        module->status = new_value;
         ret = count;
       }
       else
@@ -1546,7 +1546,7 @@ static ssize_t pilot_proc_pilot_module_status_write(struct file* file, const cha
 
 static int pilot_proc_pilot_module_status_open(struct inode *inode, struct file *file)
 {
-  return single_open(file, pilot_proc_pilot_module_status_show, PDE_DATA(inode));
+  return single_open(file, pilot_proc_pilot_module_status_show, pde_data(inode));
 }
 
 /* file operations for /proc/pilot/uartmode */
@@ -1948,7 +1948,7 @@ static const struct proc_ops proc_pilot_fwinfo_fops = {
 
 static int pilot_proc_pilot_module_type_show(struct seq_file *file, void *data)
 {
-  module_t *m = &_internals.modules[(int)file->private];
+  module_t *m = file->private;
 
   seq_printf(file, "%i %s\n",
     m->driver == NULL ? 0 : m->driver->id,
@@ -1959,7 +1959,7 @@ static int pilot_proc_pilot_module_type_show(struct seq_file *file, void *data)
 
 static int pilot_proc_pilot_module_type_open(struct inode *inode, struct file *file)
 {
-  return single_open(file, pilot_proc_pilot_module_type_show, PDE_DATA(inode));
+  return single_open(file, pilot_proc_pilot_module_type_show, pde_data(inode));
 }
 
 /* file operations for /proc/pilot/moduleX/type */
@@ -1976,9 +1976,9 @@ static int pilot_proc_pilot_module_firmware_type_show(struct seq_file *file, voi
 {
   int ret;
   pilot_module_type_t *module_type;
-  int module_index = (int)file->private;
+  module_t* module = file->private;
 
-  if (pilot_try_get_module_type(module_index, 100, &module_type) == SUCCESS)
+  if (pilot_try_get_module_type(module->slot, 100, &module_type) == SUCCESS)
   {
     seq_write(file, module_type->name, MODULE_TYPE_LENGTH);
     ret = 0;
@@ -1991,7 +1991,7 @@ static int pilot_proc_pilot_module_firmware_type_show(struct seq_file *file, voi
 
 static int pilot_proc_pilot_module_firmware_type_open(struct inode *inode, struct file *file)
 {
-  return single_open(file, pilot_proc_pilot_module_firmware_type_show, PDE_DATA(inode));
+  return single_open(file, pilot_proc_pilot_module_firmware_type_show, pde_data(inode));
 }
 
 static const struct proc_ops proc_pilot_module_firmware_type_fops = {
@@ -2005,10 +2005,10 @@ static const struct proc_ops proc_pilot_module_firmware_type_fops = {
 static int pilot_proc_pilot_module_uid_show(struct seq_file *file, void *data)
 {
   int ret;
-  int module_index = (int)file->private;
+  module_t *module = file->private;
   pilot_eeprom_uid_t *uid;
 
-  if (pilot_try_get_module_uid(module_index, EEPROM_TIMEOUT, &uid) != SUCCESS) /* try to read get the uid from pilot */
+  if (pilot_try_get_module_uid(module->slot, EEPROM_TIMEOUT, &uid) != SUCCESS) /* try to read get the uid from pilot */
     ret = -EFAULT; /* return an error */
   else /* format the uid as an uint64 */
   {
@@ -2021,7 +2021,7 @@ static int pilot_proc_pilot_module_uid_show(struct seq_file *file, void *data)
 
 static int pilot_proc_pilot_module_uid_open(struct inode *inode, struct file *file)
 {
-  return single_open(file, pilot_proc_pilot_module_uid_show, PDE_DATA(inode));
+  return single_open(file, pilot_proc_pilot_module_uid_show, pde_data(inode));
 }
 
 /* file operations for /proc/pilot/moduleX/uid */
@@ -2036,9 +2036,10 @@ static const struct proc_ops proc_pilot_module_uid_fops = {
 static int pilot_proc_module_hid_show(struct seq_file *file, void *data)
 {
   pilot_eeprom_hid_t *hid;
-  int ret, module_index = (int)file->private;
+  int ret;
+  module_t *module = file->private;
 
-  if (pilot_try_get_module_hid(module_index, EEPROM_TIMEOUT, &hid) != SUCCESS)
+  if (pilot_try_get_module_hid(module->slot, EEPROM_TIMEOUT, &hid) != SUCCESS)
     ret = -EFAULT;
   else
   {
@@ -2051,7 +2052,7 @@ static int pilot_proc_module_hid_show(struct seq_file *file, void *data)
 
 static int pilot_proc_module_hid_open(struct inode *inode, struct file *file)
 {
-  return single_open(file, pilot_proc_module_hid_show, PDE_DATA(inode));
+  return single_open(file, pilot_proc_module_hid_show, pde_data(inode));
 }
 
 /* file operations for /proc/pilot/moduleX/hid */
@@ -2067,9 +2068,10 @@ static const struct proc_ops proc_pilot_module_hid_fops = {
 static int pilot_proc_module_fid_show(struct seq_file *file, void *data)
 {
   pilot_eeprom_fid_t *fid;
-  int ret, module_index = (int)file->private;
+  int ret;
+  module_t *module = file->private;
 
-  if (pilot_try_get_module_fid(module_index, EEPROM_TIMEOUT, &fid) != SUCCESS)
+  if (pilot_try_get_module_fid(module->slot, EEPROM_TIMEOUT, &fid) != SUCCESS)
     ret = -EFAULT;
   else
   {
@@ -2082,7 +2084,7 @@ static int pilot_proc_module_fid_show(struct seq_file *file, void *data)
 
 static int pilot_proc_module_fid_open(struct inode *inode, struct file *file)
 {
-  return single_open(file, pilot_proc_module_fid_show, PDE_DATA(inode));
+  return single_open(file, pilot_proc_module_fid_show, pde_data(inode));
 }
 
 static const struct proc_ops proc_pilot_module_fid_fops = {
@@ -2116,7 +2118,7 @@ static int pilot_proc_module_eeprom_user_show(struct seq_file *file, void *data)
 
 static int pilot_proc_module_eeprom_user_open(struct inode *inode, struct file *file)
 {
-  return single_open(file, pilot_proc_module_eeprom_user_show, PDE_DATA(inode));
+  return single_open(file, pilot_proc_module_eeprom_user_show, pde_data(inode));
 }
 
 static ssize_t pilot_proc_pilot_module_eeprom_user_write (struct file *file, const char __user *buf, size_t count, loff_t *off)
@@ -2124,8 +2126,8 @@ static ssize_t pilot_proc_pilot_module_eeprom_user_write (struct file *file, con
   pilot_eeprom_data_t data; int not_copied;
   
   /* get the slot */
-  module_slot_t module = (module_slot_t)PROC_USER_DATA_GET_MODULE_INDEX(((int)PDE_DATA(file->f_inode)));
-  int data_index = PROC_USER_DATA_GET_DATA_INDEX(((int)PDE_DATA(file->f_inode)));
+  module_slot_t module = (module_slot_t)PROC_USER_DATA_GET_MODULE_INDEX(((int)pde_data(file->f_inode)));
+  int data_index = PROC_USER_DATA_GET_DATA_INDEX(((int)pde_data(file->f_inode)));
 
   LOG_DEBUG("pilot_proc_pilot_module_eeprom_user_write() called for module=%i and data_index=%i", module, data_index);
 
