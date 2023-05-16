@@ -39,7 +39,7 @@ typedef struct {
 
 /* holds info about a module */
 typedef struct {
-  int index;                                        /* module index */
+  module_slot_t slot;                               /* module slot, zero-based (index) */
   char* name_module;                                /* name of the module - pointer to a zero terminated string */
   driver_t* driver;                                 /* pointer to the driver that controls it, if any */
   //module_type_t module_type;                      /* type of the module, returned by the drivers callback_assign_slot() function */
