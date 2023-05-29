@@ -95,14 +95,14 @@ static int pilot_slcd_proc_buffer_show(struct seq_file *file, void *data)
 
 static int pilot_slcd_proc_buffer_open(struct inode *inode, struct file *file)
 {
-  return single_open(file, pilot_slcd_proc_buffer_show, PDE_DATA(inode));
+  return single_open(file, pilot_slcd_proc_buffer_show, pde_data(inode));
 }
 
 //TODO - this is not supported any longer, don't know if pilot_slcd_check_send_display_buffer() is needed to be called
 //static int pilot_slcd_proc_buffer_flush(struct file *file, fl_owner_t id)
 //{
 //  /* get the module slot */
-//  module_slot_t slot = (int)PDE_DATA(file->f_inode);
+//  module_slot_t slot = (int)pde_data(file->f_inode);
 //
 //  LOG_DEBUG("called pilot_slcd_proc_buffer_flush()");
 //
@@ -119,7 +119,7 @@ static ssize_t pilot_slcd_proc_buffer_write(struct file *file, const char __user
 
   LOG_DEBUG("called pilot_slcd_proc_buffer_write(count=%i, off=%i)", count, (int)*off);
 
-  slot = (int)PDE_DATA(file->f_inode);
+  slot = (int)pde_data(file->f_inode);
 
   /* update the internal display buffer with the written data from the user */
   for (i = 0; i < count && i < DISPLAY_BUFFERSIZE; i++)
@@ -139,7 +139,7 @@ static int pilot_slcd_proc_buffer_release(struct inode *inode, struct file *file
   LOG_DEBUG("called pilot_slcd_proc_buffer_release()");
 
   /* send the display buffer to the pilot before forwarding to single_release */
-  pilot_slcd_check_send_display_buffer((module_slot_t)PDE_DATA(inode));
+  pilot_slcd_check_send_display_buffer((module_slot_t)pde_data(inode));
 
   return single_release(inode, file);
 }
@@ -246,7 +246,7 @@ static int pilot_slcd_proc_resolution_show(struct seq_file *file, void *data)
 
 static int pilot_slcd_proc_resolution_open(struct inode *inode, struct file *file)
 {
-  return single_open(file, pilot_slcd_proc_resolution_show, PDE_DATA(inode));
+  return single_open(file, pilot_slcd_proc_resolution_show, pde_data(inode));
 }
 
 static ssize_t pilot_slcd_proc_resolution_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
@@ -256,7 +256,7 @@ static ssize_t pilot_slcd_proc_resolution_write(struct file *file, const char __
   int ret = -EINVAL;
 
   /* get the module index */
-  module_slot_t slot = (int)PDE_DATA(file->f_inode);
+  module_slot_t slot = (int)pde_data(file->f_inode);
 
   /* look for the x in the resolution 128x128 */
   for (i = 0; i < count; i++)
@@ -309,7 +309,7 @@ static int pilot_slcd_proc_bitmap_show(struct seq_file *file, void *data)
 
 static int pilot_slcd_proc_bitmap_open(struct inode *inode, struct file *file)
 {
-  return single_open(file, pilot_slcd_proc_bitmap_show, PDE_DATA(inode));
+  return single_open(file, pilot_slcd_proc_bitmap_show, pde_data(inode));
 }
 
 static ssize_t pilot_slcd_proc_bitmap_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
@@ -320,7 +320,7 @@ static ssize_t pilot_slcd_proc_bitmap_write(struct file *file, const char __user
   pilot_bmp_color_table_t color_table;
 
   /* get the module index */
-  module_slot_t slot = (int)PDE_DATA(file->f_inode);
+  module_slot_t slot = (int)pde_data(file->f_inode);
 
   /* retrieve the color palette encoding from the data */
 
@@ -350,7 +350,7 @@ static int pilot_slcd_proc_bitmap_release(struct inode *inode, struct file *file
   LOG_DEBUG("called pilot_slcd_proc_bitmap_release()");
 
   /* send the display bitmap to the pilot before forwarding to single_release */
-  pilot_slcd_check_send_display_buffer((module_slot_t)PDE_DATA(inode));
+  pilot_slcd_check_send_display_buffer((module_slot_t)pde_data(inode));
 
   return single_release(inode, file);
 }

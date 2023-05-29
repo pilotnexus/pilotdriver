@@ -116,7 +116,25 @@ module_exit(pilot_io_exit);
 /* initialization routine, called when the module is loaded */
 static int __init pilot_io_init()
 {
+  int i = 0, j=0;
   int ret = SUCCESS;
+
+  for (i=0; i < MODULES_COUNT; i++)
+  {
+    _internals.counter_modules[i].slot = i;
+    for (j=0; j < COUNTER_COUNT; j++)
+    {
+      _internals.counter_modules[i].counter_infos[j].counter_index = j;
+      _internals.counter_modules[i].counter_infos[j].counter_module = &_internals.counter_modules[i];
+    }
+
+    _internals.ai8_modules[i].slot = i;
+    for (j=0; j < COUNTER_COUNT; j++)
+    {
+      _internals.ai8_modules[i].ai8_infos[j].ai8_index = j;
+      _internals.ai8_modules[i].ai8_infos[j].ai8_module = &_internals.ai8_modules[i];
+    }
+  }
   
   /* register with the base driver */
   if ((_internals.driverId = pilot_register_driver(&register_driver)) < 0)
@@ -416,29 +434,27 @@ static void pilot_io_set_io_direction(module_slot_t slot, pilot_io16_block_t blo
   pilot_send_cmd(&cmd);
 }
 
-static int pilot_io_try_get_counter(int module_index, int counter_index, int timeout)
+static int pilot_io_try_get_counter(counter_info_t *counter_info, int timeout)
 {
   unsigned long timestamp;
-  counter_module_t* counter_module;
   gpio_module_t* gpio_module;
   int timedout = 0;
   LOG_DEBUG("pilot_io_try_get_counter() called");
 
-  counter_module = &_internals.counter_modules[module_index];
-  gpio_module = &_internals.gpio_modules[module_index];
+  gpio_module = &_internals.gpio_modules[counter_info->counter_module->slot];
 
   /* reset the is_state_updated flag */
-  gpio_module->is_state_updated[counter_index] = 0;
+  gpio_module->is_state_updated[counter_info->counter_module->slot] = 0;
 
   /* request a transmission of the counter */
-  pilot_io_request_counter_values(module_index, counter_index);
+  pilot_io_request_counter_values(counter_info->counter_module->slot, counter_info->counter_index);
 
   /* pick a time thats timeout ms in the future */
   timestamp = jiffies + (timeout * HZ / 1000);
 
   /* wait until the request is fulfilled or the timeout is reached */
   LOG_DEBUG("pilot_io_try_get_counter() waits for the counter request to be fulfilled");
-  while(!gpio_module->is_state_updated[counter_index])
+  while(!gpio_module->is_state_updated[counter_info->counter_index])
   {
     if (time_after(jiffies, timestamp))
     {
@@ -962,7 +978,7 @@ static void pilot_io_proc_init_counter_module(module_slot_t slot)
                        0666,
                        _internals.proc_module_dir[(int)slot],
                        &proc_pilot_module_counter_fops,
-                       (void*)((slot << 3) | counter_index));
+                       (void*)&counter_module->counter_infos[counter_index]);
   }
 }
 
@@ -994,15 +1010,15 @@ static void pilot_io_proc_deinit_counter_module(module_slot_t slot)
 /* callback function that gets called when the content of the file /proc/pilot/moduleX/counterY is written */
 static ssize_t pilot_io_proc_pilot_module_counter_write(struct file *file, const char *__user buf, size_t count, loff_t *off)
 {
-  int ret, data;
+  int ret;
   u64 new_value;
 
   int module_index, counter_index;
 
-  data = (int)PDE_DATA(file->f_inode);
+  counter_info_t *counter_info = (counter_info_t *)pde_data(file->f_inode);
 
-  module_index = (int)data >> 3;
-  counter_index = (int)data & 0x07;
+  module_index = counter_info->counter_module->slot;
+  counter_index = counter_info->counter_index;
 
   if (kstrtoull_from_user(buf, count, 10, &new_value) == SUCCESS)
   {
@@ -1036,7 +1052,7 @@ static void pilot_io_proc_init_ai8_module(module_slot_t slot)
         0666,
         _internals.proc_module_dir[(int)slot],
         &proc_pilot_module_ai8_fops,
-        (void*)((slot << 3) | input_index) /* encode the slot and input */
+        (void*)&ai8_module->ai8_infos[input_index]
       );
 
     //  create_proc_entry(pilot_io_proc_ai8_names[input_index],    /* name */
@@ -1139,7 +1155,7 @@ static int pilot_io_proc_pilot_io_gpio_base_show(struct seq_file *file, void *da
 
 static int pilot_io_proc_pilot_io_gpio_base_open(struct inode *inode, struct file *file)
 {
-  return single_open(file, pilot_io_proc_pilot_io_gpio_base_show, PDE_DATA(inode));
+  return single_open(file, pilot_io_proc_pilot_io_gpio_base_show, pde_data(inode));
 }
 
 static ssize_t pilot_io_proc_pilot_io_gpio_base_write(struct file* file, const char* __user buf, size_t count, loff_t* off)
@@ -1192,21 +1208,17 @@ static const struct proc_ops proc_pilot_io_gpio_max_fops = {
 
 static int pilot_io_proc_pilot_module_counter_show(struct seq_file *file, void *data)
 {
-  int module_index, counter_index, ret;
-  counter_module_t *counter_module;
-  gpio_module_t *gpio_module;
+  int ret;
+  counter_info_t *counter_info = file->private;
 
-  module_index = (int)file->private >> 3;
-  counter_index = (int)file->private & 0x7;
+  int module_index = counter_info->counter_module->slot;
+  int counter_index = counter_info->counter_index;
 
-  if (pilot_io_try_get_counter(module_index, counter_index, _internals.answer_timeout) == -1) /* try to update the counter before we write it to the user */
+  if (pilot_io_try_get_counter(counter_info, _internals.answer_timeout) == -1) /* try to update the counter before we write it to the user */
     ret = -EFAULT; /* return an error if getting the counter fails */
   else
   {
-    counter_module = &_internals.counter_modules[module_index];
-    gpio_module = &_internals.gpio_modules[module_index];
-
-    seq_printf(file, "%llu", gpio_module->gpio_states[counter_index]);
+    seq_printf(file, "%llu", _internals.gpio_modules[module_index].gpio_states[counter_index]);
     ret = 0;
   }
 
@@ -1215,7 +1227,7 @@ static int pilot_io_proc_pilot_module_counter_show(struct seq_file *file, void *
 
 static int pilot_io_proc_pilot_module_counter_open(struct inode *inode, struct file *file)
 {
-  return single_open(file, pilot_io_proc_pilot_module_counter_show, PDE_DATA(inode));
+  return single_open(file, pilot_io_proc_pilot_module_counter_show, pde_data(inode));
 }
 
 static const struct proc_ops proc_pilot_module_counter_fops = {
@@ -1230,11 +1242,12 @@ static int pilot_io_proc_pilot_module_ai8_show(struct seq_file *file, void *data
 {
   /* get the module index and counter index from the data */
   int module_index, input_index, ret;
+  ai8_info_t *ai8_info = (ai8_info_t *)file->private;
   ai8_module_t *ai8_module;
   gpio_module_t *gpio_module;
 
-  module_index = (int)file->private >> 3;
-  input_index = (int)file->private & 0x7;
+  module_index = ai8_info->ai8_module->slot;
+  input_index = ai8_info->ai8_index;
 
   LOG_DEBUG("pilot_io_proc_pilot_module_ai8_show(module_index=%i, input_index=%i) called", module_index, input_index);
 
@@ -1254,8 +1267,8 @@ static int pilot_io_proc_pilot_module_ai8_show(struct seq_file *file, void *data
 
 static int pilot_io_proc_pilot_module_ai8_open(struct inode *inode, struct file *file)
 {
-  LOG_DEBUG("pilot_io_proc_pilot_module_ai8_open() data=%i", (int)PDE_DATA(inode));
-  return single_open(file, pilot_io_proc_pilot_module_ai8_show, PDE_DATA(inode));
+  LOG_DEBUG("pilot_io_proc_pilot_module_ai8_open() data=%i", (int)pde_data(inode));
+  return single_open(file, pilot_io_proc_pilot_module_ai8_show, pde_data(inode));
 }
 
 static const struct proc_ops proc_pilot_module_ai8_fops = {
@@ -1306,7 +1319,7 @@ static ssize_t pilot_io_proc_pilot_module_aio20_write(struct file* file, const c
 {
   int ret, new_value;
 
-  aio20_info_t *aio20_info = (aio20_info_t *)PDE_DATA(file->f_inode);
+  aio20_info_t *aio20_info = (aio20_info_t *)pde_data(file->f_inode);
   LOG_DEBUG("pilot_io_proc_pilot_module_aio20_write(module_index=%i, io_index=%i) called", aio20_info->module_index, aio20_info->io_index);
 
   if (kstrtoint_from_user(buf, count, 10, &new_value) != SUCCESS)
@@ -1325,7 +1338,7 @@ static ssize_t pilot_io_proc_pilot_module_aio20_write(struct file* file, const c
 static int pilot_io_proc_pilot_module_aio20_open(struct inode *inode, struct file *file)
 {
   LOG_DEBUG("pilot_io_proc_pilot_module_aio20_open()");
-  return single_open(file, pilot_io_proc_pilot_module_aio20_show, PDE_DATA(inode));
+  return single_open(file, pilot_io_proc_pilot_module_aio20_show, pde_data(inode));
 }
 
 static const struct proc_ops proc_pilot_module_aio20_fops = {
