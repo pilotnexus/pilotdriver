@@ -7,6 +7,7 @@
 #include "common.h"
 #include "../driver/export.h"
 #include "tty_commands.h"
+#include <linux/tty_driver.h> /* tty_alloc_driver() */
 #include <linux/sched.h>  /* included for tty_wakeup() function */
 #include <linux/string.h> /* included for the memset() function */
 #include <linux/interrupt.h> /* needed for tasklet_schedule and DECLARE_TASKLET */
@@ -20,10 +21,10 @@ static void pilot_tty_close          (struct tty_struct *, struct file *);
 static int  pilot_tty_write          (struct tty_struct *, 
                                     const unsigned char *, 
                                     int);
-static int  pilot_tty_write_room     (struct tty_struct *);
+static unsigned int  pilot_tty_write_room     (struct tty_struct *);
 static void pilot_tty_flush_buffer   (struct tty_struct *);
-static int  pilot_tty_chars_in_buffer(struct tty_struct *);
-static void pilot_tty_set_termios    (struct tty_struct *, struct ktermios *);
+static unsigned int  pilot_tty_chars_in_buffer(struct tty_struct *);
+static void pilot_tty_set_termios    (struct tty_struct *, const struct ktermios *);
 static void pilot_tty_stop           (struct tty_struct *);
 static void pilot_tty_start          (struct tty_struct *);
 static void pilot_tty_hangup         (struct tty_struct *);
@@ -105,7 +106,7 @@ int pilot_tty_register_driver()
     tty_port_init(&_internals.tty_ports[i]);
 
   /* allocate the driver - we can have at most TTY_PORT_COUNT devices */
-  if (!(driver = alloc_tty_driver(TTY_PORT_COUNT)))
+  if (!(driver = tty_alloc_driver(TTY_PORT_COUNT, 0)))
     return -ENOMEM;
 
   LOG_DEBUG("alloc_tty_driver returned %x", (unsigned int)driver);
@@ -140,7 +141,6 @@ int pilot_tty_register_driver()
   if (tty_register_driver(driver))
   {
     LOG(KERN_ERR, "tty_register_driver() failed");
-    put_tty_driver(driver); /* deallocate the driver if registering fails */
     return -1;
   }
 
@@ -171,9 +171,6 @@ void pilot_tty_unregister_driver()
 
     /* then unregister the driver */
     tty_unregister_driver(_internals.Driver); 
-
-    /* cleanup the driver struct */
-    put_tty_driver(_internals.Driver);
   }
 
   spin_unlock(&_internals_lock);
@@ -378,7 +375,7 @@ static int pilot_tty_write(struct tty_struct* tty,
 
 /* callback function for the linux kernel
    returns the number of free bytes in the tty buffer of the tty driver */
-static int pilot_tty_write_room(struct tty_struct* tty)
+static unsigned int pilot_tty_write_room(struct tty_struct* tty)
 {
   int bytes_free;
   stm_bufferstate_t bufferstate;
@@ -419,7 +416,7 @@ static void pilot_tty_flush_buffer(struct tty_struct* tty)
   // tty_wakeup(tty);
 }
 
-static int pilot_tty_chars_in_buffer(struct tty_struct* tty)
+static unsigned int pilot_tty_chars_in_buffer(struct tty_struct* tty)
 {
   LOG_DEBUG("pilot_tty_chars_in_buffer() called");
   return 0;
@@ -526,7 +523,7 @@ static void pilot_tty_change_settings(struct tty_struct *tty)
   pilot_tty_send_configure(tty->index, baudrate, stopbits, parity, wordlength);
 }
 
-static void pilot_tty_set_termios(struct tty_struct* tty, struct ktermios* old_termios)
+static void pilot_tty_set_termios(struct tty_struct* tty, const struct ktermios* old_termios)
 {
   LOG_DEBUG("pilot_tty_set_termios() called");
 
