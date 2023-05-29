@@ -82,6 +82,8 @@ typedef struct {
   int answer_timeout;
 } internals_t;
 
+static int module_index[] = {0,1,2,3}; //TODO: does not use the MODULE_COUNT
+
 /* internal variables */
 static internals_t _internals = { 
   .driverId =-1, 
@@ -406,7 +408,7 @@ static void pilot_tty_proc_lora_init(module_slot_t slot)
 	module_dir = pilot_get_proc_module_dir(slot);
 
 	/* create the /proc/pilot/moduleX/enable_lora entry */
-	proc_create_data(pilot_tty_enable_lora_proc_name, 0666, module_dir, &proc_pilot_module_enable_lora_fops, module_slot_t_to_proc_data(slot));
+	proc_create_data(pilot_tty_enable_lora_proc_name, 0666, module_dir, &proc_pilot_module_enable_lora_fops, &module_index[slot]);
 }
 
 static void pilot_tty_proc_lora_deinit(module_slot_t slot)
@@ -485,7 +487,7 @@ static void pilot_tty_proc_gps_init(module_slot_t slot)
   module_dir = pilot_get_proc_module_dir(slot);
 
   /* create the /proc/pilot/moduleX/enable_gps entry */
-  proc_create_data(pilot_tty_enable_gps_proc_name, 0666, module_dir, &proc_pilot_module_enable_gps_fops, module_slot_t_to_proc_data(slot));
+  proc_create_data(pilot_tty_enable_gps_proc_name, 0666, module_dir, &proc_pilot_module_enable_gps_fops, &module_index[slot]);
 }
 
 static void pilot_tty_proc_gps_deinit(module_slot_t slot)
@@ -558,7 +560,7 @@ static void pilot_tty_proc_gsm_init(module_slot_t slot)
   module_dir = pilot_get_proc_module_dir(slot);
 
   /* create the /proc/pilot/moduleX/enable_gsm entry */
-  proc_create_data(pilot_tty_enable_gsm_proc_name, 0666, module_dir, &proc_pilot_module_enable_gsm_fops, module_slot_t_to_proc_data(slot));
+  proc_create_data(pilot_tty_enable_gsm_proc_name, 0666, module_dir, &proc_pilot_module_enable_gsm_fops, &module_index[slot]);
 }
 
 static void pilot_tty_proc_gsm_deinit(module_slot_t slot)
@@ -632,7 +634,7 @@ static void pilot_tty_proc_onewire_init(module_slot_t slot)
   module_dir = pilot_get_proc_module_dir(slot);
 
   /* register a proc file for enabling / disabling onewire (/proc/pilot/module[slot]/enable_onewire) */
-  proc_create_data(pilot_tty_enable_onewire_proc_name, 0666, module_dir, &proc_pilot_module_enable_onewire_fops, module_slot_t_to_proc_data(slot));
+  proc_create_data(pilot_tty_enable_onewire_proc_name, 0666, module_dir, &proc_pilot_module_enable_onewire_fops, &module_index[slot]);
 }
 
 static void pilot_tty_proc_onewire_deinit(module_slot_t slot)
@@ -679,7 +681,7 @@ static ssize_t pilot_tty_proc_pilot_module_enable_lora_write(struct file *file, 
 {
 	int new_value, data;
 
-	data = (int)pde_data(file->f_inode);
+	data = *((int*)pde_data(file->f_inode));
 
 	/* try to get an int value from the user */
 	if (kstrtoint_from_user(buf, count, 10, &new_value) != SUCCESS)
@@ -694,7 +696,7 @@ static ssize_t pilot_tty_proc_pilot_module_enable_lora_write(struct file *file, 
 
 static int pilot_tty_proc_pilot_module_enable_lora_show(struct seq_file *file, void *data)
 {
-	int enabled, ret, module_index = (int)file->private;
+	int enabled, ret, module_index = *((int*)file->private);
 
 	if (pilot_tty_lora_get_enable(module_index, _internals.answer_timeout, &enabled)) /* try to get the enable state of the lora module */
 	{
@@ -728,7 +730,7 @@ static ssize_t pilot_tty_proc_pilot_module_enable_gps_write(struct file *file, c
 {
   int new_value, data;
 
-  data = (int)pde_data(file->f_inode);
+  data = *((int*)pde_data(file->f_inode));
 
   /* try to get an int value from the user */
   if (kstrtoint_from_user(buf, count, 10, &new_value) != SUCCESS)
@@ -743,7 +745,7 @@ static ssize_t pilot_tty_proc_pilot_module_enable_gps_write(struct file *file, c
 
 static int pilot_tty_proc_pilot_module_enable_gps_show(struct seq_file *file, void *data)
 {
-  int enabled, ret, module_index = (int)file->private;
+  int enabled, ret, module_index = *((int*)file->private);
 
   if (pilot_tty_gps_get_enable(module_index, _internals.answer_timeout, &enabled)) /* try to get the enable state of the gps module */
   {
@@ -775,7 +777,7 @@ static const struct proc_ops proc_pilot_module_enable_gps_fops = {
 static ssize_t pilot_tty_proc_pilot_module_enable_gsm_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
   int new_value, data, ret;
-  data = (int)pde_data(file->f_inode);
+  data = *((int*)pde_data(file->f_inode));
 
   /* try to get an int value from the user */
   if (kstrtoint_from_user(buf, count, 10, &new_value) != SUCCESS)
@@ -791,7 +793,7 @@ static ssize_t pilot_tty_proc_pilot_module_enable_gsm_write(struct file *file, c
 
 static int pilot_tty_proc_pilot_module_enable_gsm_show(struct seq_file *file, void *data)
 {
-  int enabled, ret, module_index = (int)file->private;
+  int enabled, ret, module_index = *((int*)file->private);
 
   if (pilot_tty_gsm_get_enable(module_index, _internals.answer_timeout, &enabled))
   {
@@ -822,7 +824,7 @@ static const struct proc_ops proc_pilot_module_enable_gsm_fops = {
 
 static int pilot_tty_proc_pilot_module_enable_onewire_show(struct seq_file *file, void *data)
 {
-  int ret, enabled, module_index = (int)file->private;
+  int ret, enabled, module_index = *((int*)file->private);
 
   if (pilot_tty_onewire_get_enable(module_index, _internals.answer_timeout, &enabled))
   {
@@ -838,7 +840,7 @@ static ssize_t pilot_tty_proc_pilot_module_enable_onewire_write(struct file* fil
 {
   int new_value, data;
 
-  data = (int)pde_data(file->f_inode);
+  data = *((int*)pde_data(file->f_inode));
 
   if (kstrtoint_from_user(buf, count, 10, &new_value) != SUCCESS)
     return -EINVAL;
