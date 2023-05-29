@@ -33,6 +33,8 @@ static const char fpga_name[] = "fpga";
 
 static const char pilot_fpga_proc_bitstream_name[] = "bitstream";
 
+static int module_index[] = {0,1,2,3}; //TODO: does not use the MODULE_COUNT
+
 static void pilot_fpga_send_get_fpga_state(module_slot_t slot, int8_t chipselect, int8_t reset)
 {
   pilot_cmd_t cmd;
@@ -137,7 +139,7 @@ int pilot_fpga_try_send_fpga_cmd(module_slot_t slot, uint8_t *data, int size, in
 
 static ssize_t pilot_fpga_proc_bitstream_read(struct file *filp, char *buf, size_t count, loff_t *f_pos)
 {
- int module_index = (int)PDE_DATA(filp->f_inode);
+ int module_index = *((int *)pde_data(filp->f_inode));
  int ret = 0, chunk, pos = (int)*f_pos;
 
  LOG_DEBUG("called pilot_fpga_proc_bitstream_read() for slot %i, fpos %i", (int)module_index, (int)*f_pos);
@@ -160,17 +162,16 @@ static ssize_t pilot_fpga_proc_bitstream_read(struct file *filp, char *buf, size
  return ret;
 }
 
-/*
 static int pilot_fpga_proc_bitstream_show(struct seq_file *file, void *data)
 {
   //int addr = 0;
   char buffer[CHUNK_SIZE];
   size_t count = 0, addr=0, chunk;
 
-  int module_index = (int)file->private;
-  target_t target = target_t_from_module_slot_and_port(module_index, module_port_2);
+  int module_index = *((int *)file->private);
 
-  LOG_DEBUG("called pilot_fpga_proc_bitstream_show(target: %i, count=%i)", (int)target, count);
+  //target_t target = target_t_from_module_slot_and_port(module_index, module_port_2);
+  //LOG_DEBUG("called pilot_fpga_proc_bitstream_show(target: %i, count=%i)", (int)target, count);
 
   // power up flash 
   flash_power_up(module_index);
@@ -204,11 +205,10 @@ static int pilot_fpga_proc_bitstream_show(struct seq_file *file, void *data)
   }
   return 0;
 }
-*/
 
 static int pilot_fpga_proc_bitstream_open(struct inode *inode, struct file *file)
 {
-  module_slot_t slot = (int)PDE_DATA(file->f_inode);
+  module_slot_t slot = *((int *)pde_data(file->f_inode));
 
   LOG_DEBUG("called pilot_fpga_proc_bitstream_open() for slot %i", (int)slot);
   m_internals.modules[slot].bitstream_size = 0;
@@ -217,15 +217,15 @@ static int pilot_fpga_proc_bitstream_open(struct inode *inode, struct file *file
   if (!pilot_fpga_try_get_fpga_state(slot, m_internals.timeout, IGNORE, IN_RESET))
     return -EINVAL;
 
-  //return single_open(file, pilot_fpga_proc_bitstream_show, PDE_DATA(inode));
+  return single_open(file, pilot_fpga_proc_bitstream_show, pde_data(inode));
   return 0;
 }
 
-static ssize_t pilot_fpga_proc_bitstream_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
+static ssize_t pilot_fpga_proc_bitstream_write(struct file *filp, const char __user *buf, size_t count, loff_t *off)
 {
   int addr = 0, blocksize, bytes_written = 0;
   
-  int module_index = (int)PDE_DATA(file->f_inode);
+  int module_index = *((int *)pde_data(filp->f_inode));
   target_t target = target_t_from_module_slot_and_port(module_index, module_port_1);
 
   LOG_DEBUG("called pilot_fpga_proc_bitstream_write(target: %i, count=%i, off=%i)", (int)target, count, (int)*off);
@@ -243,10 +243,6 @@ static ssize_t pilot_fpga_proc_bitstream_write(struct file *file, const char __u
       return -EINVAL;
       
   LOG_DEBUG("flash ready after erase.");
-
-  //LOG_DEBUG("pilot_tty_write(count=%i) called", count);
-  //spin_lock(&_internals_lock);
-
 
   while (bytes_written < count)
   {
@@ -274,7 +270,7 @@ static int pilot_fpga_proc_bitstream_release(struct inode *inode, struct file *f
 {
 
   #ifdef DEBUG
-  module_slot_t slot = (int)PDE_DATA(file->f_inode);
+  module_slot_t slot = (int)pde_data(file->f_inode);
   LOG_DEBUG("called pilot_fpga_proc_bitstream_release() for slot %i", (int)slot);
   #endif
 
@@ -288,7 +284,7 @@ static int pilot_fpga_proc_bitstream_release(struct inode *inode, struct file *f
 static const struct proc_ops proc_bitstream_fops = {
   
   .proc_open =pilot_fpga_proc_bitstream_open,
-  //.proc_read = seq_read,
+  .proc_read = seq_read,
   .proc_read = pilot_fpga_proc_bitstream_read,
   .proc_lseek  =seq_lseek,
   .proc_release = pilot_fpga_proc_bitstream_release,
@@ -300,11 +296,11 @@ static const struct proc_ops proc_bitstream_fops = {
 
 static const char pilot_fpga_proc_cmd_name[] = "cmd";
 
-static ssize_t pilot_fpga_proc_cmd_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
+static ssize_t pilot_fpga_proc_cmd_write(struct file *filp, const char __user *buf, size_t count, loff_t *off)
 {
   int bytes_count = count <= pilot_cmd_t_data_size ? count : pilot_cmd_t_data_size;
   
-  int module_index = (int)PDE_DATA(file->f_inode);
+  int module_index = *((int *)pde_data(filp->f_inode));
 
   LOG_DEBUG("called pilot_fpga_proc_cmd_write(module_index: %i, count=%i, off=%i)", module_index, count, (int)*off);
 
@@ -319,7 +315,7 @@ static ssize_t pilot_fpga_proc_cmd_write(struct file *file, const char __user *b
 static int pilot_fpga_proc_cmd_show(struct seq_file *file, void *data)
 {
   /* get the module index */
-  int module_index = (int)file->private;
+  int module_index = *((int *)file->private);
 
   /* write the string to the user */
   seq_write(file, (const void *)m_internals.cmd[module_index].buffer, m_internals.cmd[module_index].length);
@@ -329,7 +325,7 @@ static int pilot_fpga_proc_cmd_show(struct seq_file *file, void *data)
 
 static int pilot_fpga_proc_cmd_open(struct inode *inode, struct file *file)
 {
-  return single_open(file, pilot_fpga_proc_cmd_show, PDE_DATA(inode));
+  return single_open(file, pilot_fpga_proc_cmd_show, pde_data(inode));
 }
 
 static const struct proc_ops proc_cmd_fops = {
@@ -352,7 +348,7 @@ static int pilot_fpga_proc_done_show(struct seq_file *file, void *data)
   char buffer[10];
 
   /* get the module index */
-  int module_index = (int)file->private;
+  int module_index = *((int *)file->private);
 
   if (!pilot_fpga_try_get_fpga_state(module_index, m_internals.timeout, -1, -1))
     ret = -EFAULT;  
@@ -372,7 +368,7 @@ static int pilot_fpga_proc_done_show(struct seq_file *file, void *data)
 
 static int pilot_fpga_proc_done_open(struct inode *inode, struct file *file)
 {
-  return single_open(file, pilot_fpga_proc_done_show, PDE_DATA(inode));
+  return single_open(file, pilot_fpga_proc_done_show, pde_data(inode));
 }
 
 static const struct proc_ops proc_done_fops = {
@@ -394,7 +390,7 @@ static int pilot_fpga_proc_flash_id_show(struct seq_file *file, void *data)
   int density_code;
 
   /* get the module index */
-  int module_index = (int)file->private;
+  int module_index = *((int *)file->private);
 
   if (!pilot_fpga_try_get_fpga_state(module_index, m_internals.timeout, IGNORE, IN_RESET))
     return -EFAULT;
@@ -414,7 +410,7 @@ static int pilot_fpga_proc_flash_id_show(struct seq_file *file, void *data)
 
 static int pilot_fpga_proc_flash_id_open(struct inode *inode, struct file *file)
 {
-  return single_open(file, pilot_fpga_proc_flash_id_show, PDE_DATA(inode));
+  return single_open(file, pilot_fpga_proc_flash_id_show, pde_data(inode));
 }
 
 static const struct proc_ops proc_flash_id_fops = {
@@ -432,10 +428,10 @@ static void pilot_fpga_proc_init(int slot)
   struct proc_dir_entry *module_dir = pilot_get_proc_module_dir(slot);
   init_waitqueue_head(&m_internals.receive_queue);
   mutex_init(&access_lock);
-  proc_create_data(pilot_fpga_proc_bitstream_name, 0666, module_dir, &proc_bitstream_fops, (void*)slot);
-  proc_create_data(pilot_fpga_proc_cmd_name, 0666, module_dir, &proc_cmd_fops, (void*)slot);
-  proc_create_data(pilot_fpga_proc_done_name, 0444, module_dir, &proc_done_fops, (void*)slot);
-  proc_create_data(pilot_fpga_proc_flash_id_name, 0444, module_dir, &proc_flash_id_fops, (void*)slot);
+  proc_create_data(pilot_fpga_proc_bitstream_name, 0666, module_dir, &proc_bitstream_fops, &module_index[slot]);
+  proc_create_data(pilot_fpga_proc_cmd_name, 0666, module_dir, &proc_cmd_fops, &module_index[slot]);
+  proc_create_data(pilot_fpga_proc_done_name, 0444, module_dir, &proc_done_fops, &module_index[slot]);
+  proc_create_data(pilot_fpga_proc_flash_id_name, 0444, module_dir, &proc_flash_id_fops, &module_index[slot]);
 }
 
 static void pilot_fpga_proc_deinit(int slot)
