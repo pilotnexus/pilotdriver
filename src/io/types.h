@@ -37,14 +37,33 @@ typedef struct {
 
 #define COUNTER_COUNT 8
 
-/* holds internal state of the counter module */
-typedef struct {
-  struct proc_dir_entry* proc_counters[COUNTER_COUNT]; /* holds the counter entries */
-} counter_module_t;
+// Forward declaration
+typedef struct counter_module_t counter_module_t;
 
 typedef struct {
+  int counter_index;
+  counter_module_t *counter_module;
+} counter_info_t;
+
+struct counter_module_t {
+  module_slot_t slot;                       
+  counter_info_t counter_infos[COUNTER_COUNT];
+  struct proc_dir_entry* proc_counters[COUNTER_COUNT]; 
+};
+
+// Forward declaration
+typedef struct ai8_module_t ai8_module_t;
+
+typedef struct {
+  int ai8_index;
+  ai8_module_t *ai8_module;
+} ai8_info_t;
+
+struct ai8_module_t {
+  module_slot_t slot;                       /* slot of the module */
+  ai8_info_t ai8_infos[COUNTER_COUNT];
   struct proc_dir_entry *proc_ia[IO_COUNT]; /* holds the analog input entries */
-} ai8_module_t;
+};
 
 typedef struct {
   int module_index;

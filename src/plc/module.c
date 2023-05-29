@@ -505,7 +505,7 @@ static ssize_t pilot_plc_proc_var_read(struct file *filep, char __user *buf, siz
 static int pilot_plc_proc_var_open(struct inode *inode, struct file *file)
 {
 
-  pilot_plc_variable_t *variable = (pilot_plc_variable_t *)PDE_DATA(inode);
+  pilot_plc_variable_t *variable = (pilot_plc_variable_t *)pde_data(inode);
 
   if (variable->is_open)
     return -EBUSY; /* already open */
@@ -532,7 +532,7 @@ static ssize_t pilot_plc_proc_var_write(struct file *file, const char __user *bu
   int index = 0;
   int waitret;
 
-  pilot_plc_variable_t *variable = (pilot_plc_variable_t *)PDE_DATA(file->f_inode);
+  pilot_plc_variable_t *variable = (pilot_plc_variable_t *)pde_data(file->f_inode);
 
   if (!variable)
     return -EINVAL;
@@ -567,7 +567,7 @@ static ssize_t pilot_plc_proc_var_write(struct file *file, const char __user *bu
 static unsigned int pilot_plc_proc_var_poll(struct file *filp, poll_table *wait)
 {
   unsigned int events = 0;
-  pilot_plc_variable_t *variable = (pilot_plc_variable_t *)PDE_DATA(filp->f_inode);
+  pilot_plc_variable_t *variable = (pilot_plc_variable_t *)pde_data(filp->f_inode);
 
   poll_wait(filp, &variable->in_queue, wait);
   variable->is_poll = true;
@@ -585,7 +585,7 @@ static unsigned int pilot_plc_proc_var_poll(struct file *filp, poll_table *wait)
 
 static int pilot_plc_proc_var_release(struct inode * inode, struct file * file)
 {
-  pilot_plc_variable_t *variable = (pilot_plc_variable_t *)PDE_DATA(file->f_inode);
+  pilot_plc_variable_t *variable = (pilot_plc_variable_t *)pde_data(file->f_inode);
 
   if (mutex_lock_interruptible(&variable->access_lock))
     LOG_DEBUG("mutex lock cancelled");
@@ -641,7 +641,7 @@ static int pilot_plc_proc_var_type_show(struct seq_file *file, void *data)
 
 static int pilot_plc_proc_var_type_open(struct inode *inode, struct file *file)
 {
-  return single_open(file, pilot_plc_proc_var_type_show, PDE_DATA(inode));
+  return single_open(file, pilot_plc_proc_var_type_show, pde_data(inode));
 }
 
 static int pilot_plc_try_get_variable_config(pilot_plc_variable_t * variable, uint8_t config, int timeout)
@@ -766,7 +766,7 @@ static ssize_t pilot_plc_proc_var_subscribed_write(struct file *file, const char
 {
   int ret = -EINVAL;
   int new_value;
-  pilot_plc_variable_t *variable = (pilot_plc_variable_t *)PDE_DATA(file->f_inode);
+  pilot_plc_variable_t *variable = (pilot_plc_variable_t *)pde_data(file->f_inode);
 
   /* try to get an int value from the user */
   if (kstrtoint_from_user(buf, count, 10, &new_value) != SUCCESS)
@@ -784,7 +784,7 @@ static ssize_t pilot_plc_proc_var_subscribed_write(struct file *file, const char
 
 static int pilot_plc_proc_var_subscribed_open(struct inode *inode, struct file *file)
 {
-  return single_open(file, pilot_plc_proc_var_subscribed_show, PDE_DATA(inode));
+  return single_open(file, pilot_plc_proc_var_subscribed_show, pde_data(inode));
 }
 
 static int pilot_plc_proc_var_forced_show(struct seq_file *file, void *data)
@@ -801,7 +801,7 @@ static ssize_t pilot_plc_proc_var_forced_write(struct file *file, const char __u
 {
   int ret = -EINVAL;
   bool new_value;
-  pilot_plc_variable_t *variable = (pilot_plc_variable_t *)PDE_DATA(file->f_inode);
+  pilot_plc_variable_t *variable = (pilot_plc_variable_t *)pde_data(file->f_inode);
 
   /* try to get an int value from the user */
   if (kstrtobool_from_user(buf, count, &new_value) != SUCCESS)
@@ -819,7 +819,7 @@ static ssize_t pilot_plc_proc_var_forced_write(struct file *file, const char __u
 
 static int pilot_plc_proc_var_forced_open(struct inode *inode, struct file *file)
 {
-  return single_open(file, pilot_plc_proc_var_forced_show, PDE_DATA(inode));
+  return single_open(file, pilot_plc_proc_var_forced_show, pde_data(inode));
 }
 
 
@@ -870,7 +870,7 @@ static ssize_t pilot_plc_proc_var_force_value_write(struct file *file, const cha
   int index = 0;
   int waitret;
 
-  pilot_plc_variable_t *variable = (pilot_plc_variable_t *)PDE_DATA(file->f_inode);
+  pilot_plc_variable_t *variable = (pilot_plc_variable_t *)pde_data(file->f_inode);
 
   if (!variable)
     return -EINVAL;
@@ -904,7 +904,7 @@ static ssize_t pilot_plc_proc_var_force_value_write(struct file *file, const cha
 
 static int pilot_plc_proc_var_force_value_open(struct inode *inode, struct file *file)
 {
-  return single_open(file, pilot_plc_proc_var_force_value_show, PDE_DATA(inode));
+  return single_open(file, pilot_plc_proc_var_force_value_show, pde_data(inode));
 }
 
 /* file operations for the /proc/pilot/plc/vars/..../value */
@@ -1197,7 +1197,7 @@ static int pilot_plc_proc_state_show(struct seq_file *file, void *data)
 
 static int pilot_plc_proc_state_open(struct inode *inode, struct file *file)
 {
-  return single_open(file, pilot_plc_proc_state_show, PDE_DATA(inode));
+  return single_open(file, pilot_plc_proc_state_show, pde_data(inode));
 }
 
 static ssize_t pilot_plc_proc_state_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
@@ -1257,7 +1257,7 @@ static int pilot_plc_proc_variables_state_show(struct seq_file *file, void *data
 
 static int pilot_plc_proc_variables_state_open(struct inode *inode, struct file *file)
 {
-  return single_open(file, pilot_plc_proc_variables_state_show, PDE_DATA(inode));
+  return single_open(file, pilot_plc_proc_variables_state_show, pde_data(inode));
 }
 
 static ssize_t pilot_plc_proc_variables_state_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
@@ -1371,7 +1371,7 @@ static int pilot_plc_proc_cycletimes_show(struct seq_file *file, void *data)
 
 static int pilot_plc_proc_cycletimes_open(struct inode *inode, struct file *file)
 {
-  return single_open(file, pilot_plc_proc_cycletimes_show, PDE_DATA(inode));
+  return single_open(file, pilot_plc_proc_cycletimes_show, pde_data(inode));
 }
 
 /* file operations for /proc/pilot/plc/cycletimes */
@@ -1503,7 +1503,7 @@ static ssize_t pilot_plc_proc_stream_write(struct file *file, const char __user 
 static unsigned int pilot_plc_proc_stream_poll(struct file *filep, poll_table *wait)
 {
   //unsigned int events = 0;
-  //pilot_plc_variable_t *variable = (pilot_plc_variable_t *)PDE_DATA(filp->f_inode);
+  //pilot_plc_variable_t *variable = (pilot_plc_variable_t *)pde_data(filp->f_inode);
 
   //struct pilotevent_state *pe = filep->private_data;
 	__poll_t events = 0;

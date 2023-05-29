@@ -679,7 +679,7 @@ static ssize_t pilot_tty_proc_pilot_module_enable_lora_write(struct file *file, 
 {
 	int new_value, data;
 
-	data = (int)PDE_DATA(file->f_inode);
+	data = (int)pde_data(file->f_inode);
 
 	/* try to get an int value from the user */
 	if (kstrtoint_from_user(buf, count, 10, &new_value) != SUCCESS)
@@ -709,7 +709,7 @@ static int pilot_tty_proc_pilot_module_enable_lora_show(struct seq_file *file, v
 
 static int pilot_tty_proc_pilot_module_enable_lora_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, pilot_tty_proc_pilot_module_enable_lora_show, PDE_DATA(inode));
+	return single_open(file, pilot_tty_proc_pilot_module_enable_lora_show, pde_data(inode));
 }
 
 static const struct proc_ops proc_pilot_module_enable_lora_fops = {
@@ -728,7 +728,7 @@ static ssize_t pilot_tty_proc_pilot_module_enable_gps_write(struct file *file, c
 {
   int new_value, data;
 
-  data = (int)PDE_DATA(file->f_inode);
+  data = (int)pde_data(file->f_inode);
 
   /* try to get an int value from the user */
   if (kstrtoint_from_user(buf, count, 10, &new_value) != SUCCESS)
@@ -758,7 +758,7 @@ static int pilot_tty_proc_pilot_module_enable_gps_show(struct seq_file *file, vo
 
 static int pilot_tty_proc_pilot_module_enable_gps_open(struct inode *inode, struct file *file)
 {
-  return single_open(file, pilot_tty_proc_pilot_module_enable_gps_show, PDE_DATA(inode));
+  return single_open(file, pilot_tty_proc_pilot_module_enable_gps_show, pde_data(inode));
 }
 
 static const struct proc_ops proc_pilot_module_enable_gps_fops = {
@@ -775,7 +775,7 @@ static const struct proc_ops proc_pilot_module_enable_gps_fops = {
 static ssize_t pilot_tty_proc_pilot_module_enable_gsm_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
   int new_value, data, ret;
-  data = (int)PDE_DATA(file->f_inode);
+  data = (int)pde_data(file->f_inode);
 
   /* try to get an int value from the user */
   if (kstrtoint_from_user(buf, count, 10, &new_value) != SUCCESS)
@@ -806,7 +806,7 @@ static int pilot_tty_proc_pilot_module_enable_gsm_show(struct seq_file *file, vo
 
 static int pilot_tty_proc_pilot_module_enable_gsm_open(struct inode *inode, struct file *file)
 {
-  return single_open(file, pilot_tty_proc_pilot_module_enable_gsm_show, PDE_DATA(inode));
+  return single_open(file, pilot_tty_proc_pilot_module_enable_gsm_show, pde_data(inode));
 }
 
 static const struct proc_ops proc_pilot_module_enable_gsm_fops = {
@@ -838,7 +838,7 @@ static ssize_t pilot_tty_proc_pilot_module_enable_onewire_write(struct file* fil
 {
   int new_value, data;
 
-  data = (int)PDE_DATA(file->f_inode);
+  data = (int)pde_data(file->f_inode);
 
   if (kstrtoint_from_user(buf, count, 10, &new_value) != SUCCESS)
     return -EINVAL;
@@ -851,7 +851,7 @@ static ssize_t pilot_tty_proc_pilot_module_enable_onewire_write(struct file* fil
 
 static int pilot_tty_proc_pilot_module_enable_onewire_open(struct inode *inode, struct file *file)
 {
-  return single_open(file, pilot_tty_proc_pilot_module_enable_onewire_show, PDE_DATA(inode));
+  return single_open(file, pilot_tty_proc_pilot_module_enable_onewire_show, pde_data(inode));
 }
 
 static const struct proc_ops proc_pilot_module_enable_onewire_fops = {
