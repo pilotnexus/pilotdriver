@@ -1459,45 +1459,47 @@ static void pilot_set_module_status(module_slot_t slot, int module_status)
 
 static ssize_t pilot_plc_proc_stream_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
 {
-  int ret = -EINVAL;
-  //pilotevent_data
-  if (count == sizeof(struct pilotevent_data)) 
-  {
-    pilot_plc_state_t value;
-    int module_status;
-    struct pilotevent_data pe;
-    ret = copy_to_user(&pe, buf, count);
-    switch (pe.cmd)
-    {
-      case 0x1: //write variable
-        if (pe.sub < _internals.variables_count)
-        {
-          LOG_DEBUG("stream write to variable %d received", pe.sub);
-          pilot_plc_send_set_variable_cmd(pe.sub, 0, pe.data, get_IEC_size(_internals.variables[pe.sub]->iectype));
-        }
-      break;
-      case 0x2: //write variable config
-        if (pe.sub < _internals.variables_count)
-        {
-          LOG_DEBUG("stream write to variable %d config received", pe.sub);
-          pilot_plc_set_variable_config(_internals.variables[pe.sub], pe.reserved, pe.data[0]);
-        }
-      break;
-      case 0x10: //write plc state
-        memcpy(&value, pe.data, sizeof(pilot_plc_state_t));
-        pilot_plc_send_set_state_cmd(value);
-      break;
-      case 0x11: //write module status
-        memcpy(&module_status, pe.data, sizeof(module_status));
-        pilot_set_module_status(pe.reserved, module_status);
-      break;
-    }
+  pilot_plc_state_t value;
+  int module_status;
+  struct pilotevent_data pe;
 
-  }
-  else {
+  if (count != sizeof(struct pilotevent_data)) 
+  {
     LOG_DEBUG("stream write with wrong length. expected: %d, got %d", sizeof(struct pilotevent_data), count);
+    return -EINVAL;
   }
-  return ret;
+
+  if (copy_from_user(&pe, buf, count) != 0)
+    return -EFAULT;
+
+  switch (pe.cmd)
+  {
+    case 0x1: //write variable
+      if (pe.sub < _internals.variables_count)
+      {
+        LOG_DEBUG("stream write to variable %d received", pe.sub);
+        pilot_plc_send_set_variable_cmd(pe.sub, 0, pe.data, get_IEC_size(_internals.variables[pe.sub]->iectype));
+      }
+    break;
+    case 0x2: //write variable config
+      if (pe.sub < _internals.variables_count)
+      {
+        LOG_DEBUG("stream write to variable %d config received", pe.sub);
+        pilot_plc_set_variable_config(_internals.variables[pe.sub], pe.reserved, pe.data[0]);
+      }
+    break;
+    case 0x10: //write plc state
+      memcpy(&value, pe.data, sizeof(pilot_plc_state_t));
+      pilot_plc_send_set_state_cmd(value);
+    break;
+    case 0x11: //write module status
+      memcpy(&module_status, pe.data, sizeof(module_status));
+      pilot_set_module_status(pe.reserved, module_status);
+    break;
+  }
+  
+  
+  return sizeof(struct pilotevent_data); 
 }
 
 static unsigned int pilot_plc_proc_stream_poll(struct file *filep, poll_table *wait)
