@@ -1466,7 +1466,9 @@ static ssize_t pilot_plc_proc_stream_write(struct file *file, const char __user 
     pilot_plc_state_t value;
     int module_status;
     struct pilotevent_data pe;
-    ret = copy_to_user(&pe, buf, count);
+    if (copy_from_user(&pe, buf, count) != 0)
+       return -EFAULT; // return error if copy_from_user fails
+
     switch (pe.cmd)
     {
       case 0x1: //write variable
