@@ -12,6 +12,7 @@ KERNEL_VER_LIST := $(shell ls -1vd $(KERNEL_HEADER_ROOT)/* 2> /dev/null | grep l
 PACKAGEDIR:="$(OUT_DIR)/build/package"
 MODULESDIR:="$(PACKAGEDIR)/debian/lib/modules"
 OVERLAYSDIR:="$(PACKAGEDIR)/debian/boot/overlays"
+KERNEL_SOURCE_DIR:="/opt/kernel-source"
 DEB:="deb"
 DEBDIR:="$(OUT_DIR)/$(DEB)"
 VERSION:=$(shell cat version)
@@ -46,7 +47,9 @@ load:
 prepare:
 	sudo apt install -y git bc bison flex libssl-dev libncurses5-dev make
 	sudo wget https://raw.githubusercontent.com/RPi-Distro/rpi-source/master/rpi-source -O /usr/local/bin/rpi-source && sudo chmod +x /usr/local/bin/rpi-source && /usr/local/bin/rpi-source -q --tag-update
-	-rpi-source
+	rm -rf $(KERNEL_SOURCE_DIR) # we remove and recreate the kernel source directory
+	mkdir $(KERNEL_SOURCE_DIR)  # otherwise rpi-source might give an error
+	/usr/local/bin/rpi-source -d $(KERNEL_SOURCE_DIR) #write the kernel source to the /opt directory
 
 package:
 	echo "create package"; \
