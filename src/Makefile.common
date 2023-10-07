@@ -1,6 +1,7 @@
 BASE_DRV_SRC = $(PWD)/../driver
 
 PREFIX = arm-linux-gnueabihf-
+PREFIX = aarch64-linux-gnu-
 
 KERNEL_HEADER_ROOT := $(PWD)/../../build/rpi
 KERNEL_DIR_LIST := $(shell ls -1vd $(KERNEL_HEADER_ROOT)/* 2> /dev/null | grep linux-rpi)
