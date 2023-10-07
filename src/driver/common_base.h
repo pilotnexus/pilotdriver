@@ -107,7 +107,7 @@ typedef enum
 #define pilot_cmd_t_size_without_data 8
 
 /* rpi command struct */
-typedef struct {
+typedef struct __attribute__((__packed__)){
   unsigned char target; /* target of the command */
   unsigned char type;   /* type of the command */
   unsigned char length; /* command length */
@@ -124,7 +124,7 @@ typedef enum {
 } pilot_current_cmd_index_t;
 
 /* struct that holds the current rpi command that is being received */
-typedef struct {
+typedef struct __attribute__((__packed__)) {
   pilot_cmd_t cmd;                 /* the command we're receiving from the rpi */
   pilot_current_cmd_index_t index; /* current index of the fillstatus of this command */
   uint32_t length;
