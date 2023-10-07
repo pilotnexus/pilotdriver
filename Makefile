@@ -45,11 +45,7 @@ load:
 	@- cp /etc/pilot/variables /proc/pilot/plc/varconfig
 
 prepare:
-	sudo apt install -y git bc bison flex libssl-dev libncurses5-dev make
-	sudo wget https://raw.githubusercontent.com/RPi-Distro/rpi-source/master/rpi-source -O /usr/local/bin/rpi-source && sudo chmod +x /usr/local/bin/rpi-source && /usr/local/bin/rpi-source -q --tag-update
-	rm -rf $(KERNEL_SOURCE_DIR) # we remove and recreate the kernel source directory
-	mkdir $(KERNEL_SOURCE_DIR)  # otherwise rpi-source might give an error
-	/usr/local/bin/rpi-source -d $(KERNEL_SOURCE_DIR) #write the kernel source to the /opt directory
+	sudo apt install -y git bc bison flex libssl-dev libncurses5-dev make raspberrypi-kernel-headers
 
 package:
 	echo "create package"; \
