@@ -20,13 +20,15 @@ VERSION:=$(shell cat version)
 bold=$(shell tput bold)
 normal=$(shell tput sgr0)
 
-kernel=$(shell uname -r)
-fullkernel:=$(shell uname -a | awk '{ printf $$3} $$4 ~ /\#/ { print substr($$4,2) }')
-localname=pilot-$(kernel)
+kern_release := $(shell uname -r)
+kern_version := $(shell uname -a | awk '/\#/ { print substr($$4,2) }')
+fullkernel := $(shell if echo $(kern_release) | grep -q "+$$"; then echo $(kern_release) | sed 's/+/-$(kern_version)/'; else echo $(kern_release)-$(kern_version); fi)
+
+localname=pilot-$(kern_release)
 fullname=pilot-$(fullkernel)
 
 coral_packagedir:="$(OUT_DIR)/build/$(localname)"
-coral_modulesdir:="$(coral_packagedir)/debian/lib/modules/$(kernel)/"
+coral_modulesdir:="$(coral_packagedir)/debian/lib/modules/$(kern_release)/"
 coral_overlaysdir:="$(coral_packagedir)/debian/boot"
 
 reverse = $(if $(1),$(call reverse,$(wordlist 2,$(words $(1)),$(1)))) $(firstword $(1))
