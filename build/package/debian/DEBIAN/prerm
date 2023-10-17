@@ -1,32 +1,31 @@
 #!/bin/sh
 
-# unload the modules
-modprobe -rf pilot_plc
-modprobe -rf pilot_slcd
-modprobe -rf pilot_rtc
-modprobe -rf pilot_tty
-modprobe -rf pilot_io
-modprobe -rf pilot_fpga
-modprobe -rf pilot
+# Unload the modules
+for module in pilot_plc pilot_slcd pilot_rtc pilot_tty pilot_io pilot_fpga pilot; do
+    modprobe -rf $module || true
+done
 
-# update list of modules for modprobe
+# Update list of modules for modprobe
 depmod
 
-# remove the kernel modules from load at startup
-sed "/pilot_plc/d"  /etc/modules -i
-sed "/pilot_slcd/d" /etc/modules -i
-sed "/pilot_rtc/d"  /etc/modules -i
-sed "/pilot_tty/d"  /etc/modules -i
-sed "/pilot_io/d"   /etc/modules -i
-sed "/pilot_fpga/d" /etc/modules -i
-sed "/pilot/d"     /etc/modules -i
+# Remove the kernel modules from load at startup
+sed "/pilot_plc/d;/pilot_slcd/d;/pilot_rtc/d;/pilot_tty/d;/pilot_io/d;/pilot_fpga/d;/pilot/d" -i /etc/modules
 
-# remove overlay
-dtoverlay -r pilot || true
-rm -r /boot/overlays/pilot.dtbo
+# Remove overlay
+if [ -e "/boot/overlays/pilot.dtbo" ]; then
+    rm -r /boot/overlays/pilot.dtbo
+fi
 
-# remove config
-sed -i -e '/# --- Pilot Config Start (do not modify) ---/,/# --- Pilot Config End (do not modify) ---/d' /boot/config.txt
+# Remove configs marked by the start and end tags
+config_start="# --- Pilot Config Start (do not modify) ---"
+config_end="# --- Pilot Config End (do not modify) ---"
 
-# remove plc startup file
-rm -f /etc/rc3.d/S01pilot-config
+# Remove blocks with markers
+while grep -q "$config_start" /boot/config.txt; do
+    sed -i "/$config_start/,/$config_end/d" /boot/config.txt
+done
+
+# Remove plc startup file
+if [ -e "/etc/rc3.d/S01pilot-config" ]; then
+    rm -f /etc/rc3.d/S01pilot-config
+fi

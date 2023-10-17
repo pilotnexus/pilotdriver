@@ -1,43 +1,91 @@
 #!/bin/sh
 
-# add overlay
+# Ensure the script is run as root
+if [ "$(id -u)" -ne 0 ]; then
+  echo "This script must be run as root"
+  exit 1
+fi
+
+# Add overlay
 dtoverlay pilot
 
-# update the list of modules for modprobe
+# Update the list of modules for modprobe
 depmod
 
-# load the modules
-modprobe pilot
-modprobe pilot_io
-modprobe pilot_tty
-modprobe pilot_rtc
-modprobe pilot_slcd
-modprobe pilot_plc
-modprobe pilot_fpga
+# Load the modules
+modprobe pilot || echo "Failed to load pilot module"
+modprobe pilot_io || echo "Failed to load pilot_io module"
+modprobe pilot_tty || echo "Failed to load pilot_tty module"
+modprobe pilot_rtc || echo "Failed to load pilot_rtc module"
+modprobe pilot_slcd || echo "Failed to load pilot_slcd module"
+modprobe pilot_plc || echo "Failed to load pilot_plc module"
+modprobe pilot_fpga || echo "Failed to load pilot_fpga module"
 
-# add the modules to /etc/modules so that they gets loaded on system startup
-echo "pilot"     >> /etc/modules
-echo "pilot_tty"  >> /etc/modules
-echo "pilot_io"   >> /etc/modules
-echo "pilot_rtc"  >> /etc/modules
-echo "pilot_slcd" >> /etc/modules
-echo "pilot_plc"  >> /etc/modules
-echo "pilot_fpga"  >> /etc/modules
+# Add the modules to /etc/modules so that they get loaded on system startup
+for module in pilot pilot_tty pilot_io pilot_rtc pilot_slcd pilot_plc pilot_fpga; do
+    # Check if the module is already in /etc/modules
+    if ! grep -qE "^${module}$" /etc/modules; then
+        echo $module >> /etc/modules
+    fi
+done
 
 # add config
-echo "# --- Pilot Config Start (do not modify) ---
-dtparam=spi=on
+config_start="# --- Pilot Config Start (do not modify) ---"
+config_end="# --- Pilot Config End (do not modify) ---"
+
+all_start="[all]"
+pi4_start="[pi4]"
+
+all_config="dtparam=spi=on
+dtparam=i2c_arm=on
 dtoverlay=pi3-miniuart-bt
 dtoverlay=pilot
 enable_uart=1
 core_freq=250
-init_uart_clock=48000000
-# --- Pilot Config End (do not modify) ---" >> /boot/config.txt
+init_uart_clock=48000000"
+
+pi4_config="dtoverlay=uart2
+dtoverlay=uart5"
+
+# Remove blocks with markers
+while grep -q "$config_start" /boot/config.txt; do
+    sed -i "/$config_start/,/$config_end/d" /boot/config.txt
+done
+
+# Function to append config if block doesn't exist
+append_config() {
+    local block_start="$1"
+    local config="$2"
+    if ! grep -q "$block_start" /boot/config.txt; then
+        echo "$config_start"
+        echo "$block_start"
+        echo "$config"
+        echo "$config_end"
+    fi
+}
+
+# Append configurations
+append_config "$all_start" "$all_config" >> /boot/config.txt
+append_config "$pi4_start" "$pi4_config" >> /boot/config.txt
 
 # remove console from cmdline
-sed -i /boot/cmdline.txt -e "s/console=serial0,[0-9]\+ //"
-sed -i /boot/cmdline.txt -e "s/console=ttyAMA0,[0-9]\+ //"
+
+if grep -q "console=serial0," /boot/cmdline.txt; then
+    sed -i /boot/cmdline.txt -e "s/console=serial0,[0-9]\+ //"
+fi
+
+if grep -q "console=ttyAMA0," /boot/cmdline.txt; then
+    sed -i /boot/cmdline.txt -e "s/console=ttyAMA0,[0-9]\+ //"
+fi
 
 # generate plc var loader
-chmod +x /etc/init.d/pilot-config
-ln -rs /etc/init.d/pilot-config /etc/rc3.d/S01pilot-config
+#
+# Set execute permission only if not already set
+if [ ! -x /etc/init.d/pilot-config ]; then
+    chmod +x /etc/init.d/pilot-config
+fi
+
+# Create symbolic link only if it doesn't exist
+if [ ! -L /etc/rc3.d/S01pilot-config ]; then
+    ln -rs /etc/init.d/pilot-config /etc/rc3.d/S01pilot-config
+fi
