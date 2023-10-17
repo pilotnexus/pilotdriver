@@ -1,4 +1,5 @@
 **** CHANGELOG ****
+2.0.6 - Improved postinst and prerm scripts
 2.0.3 - Forced values
 2.0.2 - File permissions fix
 2.0.3 - Message length fix for tty enable commands
