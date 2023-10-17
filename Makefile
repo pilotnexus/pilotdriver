@@ -22,7 +22,8 @@ normal=$(shell tput sgr0)
 
 kern_release := $(shell uname -r)
 kern_version := $(shell uname -a | awk '/\#/ { print substr($$4,2) }')
-fullkernel := $(shell if echo $(kern_release) | grep -q "+$$"; then echo $(kern_release) | sed 's/+/-$(kern_version)/'; else echo $(kern_release)-$(kern_version); fi)
+fullkernel := $(kern_release)
+# fullkernel := $(shell if echo $(kern_release) | grep -q "+$$"; then echo $(kern_release) | sed 's/+/-$(kern_version)/'; else echo $(kern_release)-$(kern_version); fi)
 
 localname=pilot-$(kern_release)
 fullname=pilot-$(fullkernel)
