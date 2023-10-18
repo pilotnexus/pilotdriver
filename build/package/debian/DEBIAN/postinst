@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 # Ensure the script is run as root
 if [ "$(id -u)" -ne 0 ]; then
@@ -46,36 +46,79 @@ init_uart_clock=48000000"
 pi4_config="dtoverlay=uart2
 dtoverlay=uart5"
 
+# Escape special characters for sed
+escaped_start=$(printf '%s\n' "$config_start" | sed 's:[][\\/.^$*]:\\&:g')
+escaped_end=$(printf '%s\n' "$config_end" | sed 's:[][\\/.^$*]:\\&:g')
+
 # Remove blocks with markers
-while grep -q "$config_start" /boot/config.txt; do
-    sed -i "/$config_start/,/$config_end/d" /boot/config.txt
+while grep -Fq "$config_start" /boot/config.txt; do
+    sed -i "/$escaped_start/,/$escaped_end/d" /boot/config.txt
 done
 
-# Function to append config if block doesn't exist
+# Function to append config
 append_config() {
     local block_start="$1"
     local config="$2"
-    if ! grep -q "$block_start" /boot/config.txt; then
-        echo "$config_start"
-        echo "$block_start"
-        echo "$config"
-        echo "$config_end"
+    local temp_file="/tmp/config_temp.txt"
+    local last_section_line=-1
+    local current_line_number=0
+
+    # Create a temp file
+    rm -f $temp_file
+    touch $temp_file
+
+    # First pass: Find the last occurrence of the section
+    while IFS= read -r line; do
+        ((current_line_number++))
+        if [[ "$line" == "$block_start" ]]; then
+            last_section_line=$current_line_number
+        fi
+    done < /boot/config.txt
+
+    current_line_number=0
+    done < /boot/config.txt
+
+    current_line_number=0
+
+    # Second pass: Write to temp file, add the config to the last occurrence of t he section
+    while IFS= read -r line; do
+        ((current_line_number++))
+
+        if [[ "$line" == "$block_start" && $current_line_number -eq $last_section_line ]]; then
+            echo "$line" >> $temp_file
+            echo "$config_start" >> $temp_file
+            echo "$config" >> $temp_file
+            echo "$config_end" >> $temp_file
+        else
+            echo "$line" >> $temp_file
+        fi
+    done < /boot/config.txt
+
+    # If no section was found, append at the end
+    if [[ $last_section_line -eq -1 ]]; then
+        echo "$block_start" >> $temp_file
+        echo "$config_start" >> $temp_file
+        echo "$config" >> $temp_file
+        echo "$config_end" >> $temp_file
     fi
+
+    # Overwrite original with temp
+    mv $temp_file /boot/config.txt
 }
 
 # Append configurations
-append_config "$all_start" "$all_config" >> /boot/config.txt
-append_config "$pi4_start" "$pi4_config" >> /boot/config.txt
+append_config "$all_start" "$all_config"
+append_config "$pi4_start" "$pi4_config"
 
 # remove console from cmdline
-
 if grep -q "console=serial0," /boot/cmdline.txt; then
-    sed -i /boot/cmdline.txt -e "s/console=serial0,[0-9]\+ //"
+    sed -i -e "s/console=serial0,[0-9]\+ //g" /boot/cmdline.txt
 fi
 
 if grep -q "console=ttyAMA0," /boot/cmdline.txt; then
-    sed -i /boot/cmdline.txt -e "s/console=ttyAMA0,[0-9]\+ //"
+    sed -i -e "s/console=ttyAMA0,[0-9]\+ //g" /boot/cmdline.txt
 fi
+
 
 # generate plc var loader
 #
