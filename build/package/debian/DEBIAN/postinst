@@ -76,9 +76,6 @@ append_config() {
     done < /boot/config.txt
 
     current_line_number=0
-    done < /boot/config.txt
-
-    current_line_number=0
 
     # Second pass: Write to temp file, add the config to the last occurrence of t he section
     while IFS= read -r line; do
