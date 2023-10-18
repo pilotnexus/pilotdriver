@@ -1,25 +1,20 @@
 #!/bin/sh
 
-# unload the modules
-rmmod pilot_plc
-rmmod pilot_slcd
-rmmod pilot_rtc
-rmmod pilot_tty
-rmmod pilot_io
-rmmod pilot_fpga
-rmmod pilot
+# String of modules
+modules="pilot_io pilot_tty pilot_rtc pilot_slcd pilot_plc pilot_fpga pilot"
 
-# update list of modules for modprobe
+# Unload the modules
+for module in $modules; do
+    rmmod -f $module 2>/dev/null || true
+done
+
+# Update list of modules for modprobe
 depmod
 
-# remove the kernel modules from load at startup
-sed "/pilot_plc/d"  /etc/modules -i
-sed "/pilot_slcd/d" /etc/modules -i
-sed "/pilot_rtc/d"  /etc/modules -i
-sed "/pilot_tty/d"  /etc/modules -i
-sed "/pilot_io/d"   /etc/modules -i
-sed "/pilot_fpga/d" /etc/modules -i
-sed "/pilot/d"     /etc/modules -i
+# Remove the kernel modules from load at startup
+for module in $modules; do
+    sed "/${module}/d" /etc/modules -i
+done
 
 # remove overlay
 # dtoverlay -r pilot
