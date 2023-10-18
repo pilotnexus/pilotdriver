@@ -54,8 +54,8 @@ prepare:
 package:
 	echo "create package"; \
 	rm -rf $(MODULESDIR)/*; \
-	mkdir -p $(MODULESDIR)/`echo $(kern_release) | cut -f1 -d'+'`+; \
-	cp $(OUT_DIR)/bin/$(fullkernel)/* $(MODULESDIR)/`echo $(kern_release) | cut -f1 -d'+'`+; \
+	mkdir -p $(MODULESDIR)/`echo $(kern_release); \
+	cp $(OUT_DIR)/bin/$(fullkernel)/* $(MODULESDIR)/`echo $(kern_release); \
 	mkdir -p $(OVERLAYSDIR); \
 	cp rpi_files/pilot.dtbo $(OVERLAYSDIR); \
 	sed "s/\[PACKAGENAME\]/pilot-$(fullkernel)/" $(PACKAGEDIR)/control.template | sed "s/\[VERSION\]/$(VERSION)/" > $(PACKAGEDIR)/debian/DEBIAN/control; \
@@ -101,8 +101,8 @@ xc_$(1):
 	else \
 	echo "create package"; \
 	rm -rf $(MODULESDIR)/*; \
-	mkdir -p $(MODULESDIR)/`echo $(1) | cut -f1 -d'+'`+; \
-	cp $(OUT_DIR)/bin/$(1)/* $(MODULESDIR)/`echo $(1) | cut -f1 -d'+'`+; \
+	mkdir -p $(MODULESDIR)/`echo $(1); \
+	cp $(OUT_DIR)/bin/$(1)/* $(MODULESDIR)/`echo $(1); \
 	mkdir -p $(OVERLAYSDIR); \
 	cp rpi_files/pilot.dtbo $(OVERLAYSDIR); \
 	sed "s/\[PACKAGENAME\]/pilot-$(1)/" $(PACKAGEDIR)/control.template | sed "s/\[VERSION\]/$(VERSION)/" > $(PACKAGEDIR)/debian/DEBIAN/control; \
