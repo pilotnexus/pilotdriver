@@ -12,17 +12,16 @@ dtoverlay pilot
 # Update the list of modules for modprobe
 depmod
 
-# Load the modules
-modprobe pilot || echo "Failed to load pilot module"
-modprobe pilot_io || echo "Failed to load pilot_io module"
-modprobe pilot_tty || echo "Failed to load pilot_tty module"
-modprobe pilot_rtc || echo "Failed to load pilot_rtc module"
-modprobe pilot_slcd || echo "Failed to load pilot_slcd module"
-modprobe pilot_plc || echo "Failed to load pilot_plc module"
-modprobe pilot_fpga || echo "Failed to load pilot_fpga module"
+# Array of modules
+modules=("pilot" "pilot_io" "pilot_tty" "pilot_rtc" "pilot_slcd" "pilot_plc" "pilot_fpga")
 
-# Add the modules to /etc/modules so that they get loaded on system startup
-for module in pilot pilot_tty pilot_io pilot_rtc pilot_slcd pilot_plc pilot_fpga; do
+# Load the modules
+for module in "${modules[@]}"; do
+    modprobe $module || { echo "Failed to load $module module"; exit 1; }
+done
+
+# Add the modules to /etc/modules so they get loaded on system startup
+for module in "${modules[@]}"; do
     # Check if the module is already in /etc/modules
     if ! grep -qE "^${module}$" /etc/modules; then
         echo $module >> /etc/modules

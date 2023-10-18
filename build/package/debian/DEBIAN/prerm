@@ -2,7 +2,7 @@
 
 # Unload the modules
 for module in pilot_plc pilot_slcd pilot_rtc pilot_tty pilot_io pilot_fpga pilot; do
-    modprobe -rf $module || true
+    modprobe -rf $module 2>/dev/null || true
 done
 
 # Update list of modules for modprobe
