@@ -54,8 +54,8 @@ prepare:
 package:
 	echo "create package"; \
 	rm -rf $(MODULESDIR)/*; \
-	mkdir -p $(MODULESDIR)/`echo $(kern_release); \
-	cp $(OUT_DIR)/bin/$(fullkernel)/* $(MODULESDIR)/`echo $(kern_release); \
+	mkdir -p $(MODULESDIR)/$(kern_release); \
+	cp $(OUT_DIR)/bin/$(fullkernel)/* $(MODULESDIR)/$(kern_release); \
 	mkdir -p $(OVERLAYSDIR); \
 	cp rpi_files/pilot.dtbo $(OVERLAYSDIR); \
 	sed "s/\[PACKAGENAME\]/pilot-$(fullkernel)/" $(PACKAGEDIR)/control.template | sed "s/\[VERSION\]/$(VERSION)/" > $(PACKAGEDIR)/debian/DEBIAN/control; \
