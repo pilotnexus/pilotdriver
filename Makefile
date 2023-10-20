@@ -52,7 +52,7 @@ prepare:
 	sudo apt install -y git bc bison flex libssl-dev libncurses5-dev make raspberrypi-kernel-headers
 
 prepare-full:
-	-sudo apt purge raspberrypi-kernel-headers
+	-sudo apt purge -y raspberrypi-kernel-headers
 	sudo apt install -y git bc bison flex libssl-dev libncurses5-dev make
 	sudo wget https://raw.githubusercontent.com/RPi-Distro/rpi-source/master/rpi-source -O /usr/local/bin/rpi-source && sudo chmod +x /usr/local/bin/rpi-source && /usr/local/bin/rpi-source -q --tag-update
 	-rpi-source
